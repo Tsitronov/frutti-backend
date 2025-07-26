@@ -24,7 +24,10 @@ app.post('/api/login', async (req, res) => {
   const user = users.find(u => u.username === username);
   if (!user) return res.status(401).json({ error: 'Utente non trovato' });
 
+  console.log(password);
+  console.log(user);
   const valid = await bcrypt.compare(password, user.password);
+  console.log(valid);
   if (!valid) return res.status(401).json({ error: 'Password errata' });
 
   res.json({ message: 'Login riuscito' });
