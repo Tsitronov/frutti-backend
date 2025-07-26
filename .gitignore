@@ -1,0 +1,23 @@
+# Node modules
+node_modules/
+
+# Build folders
+build/
+dist/
+
+# Environment files
+.env
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# VS Code
+.vscode/
+
+# MacOS
+.DS_Store
+
+# React
+*.local
