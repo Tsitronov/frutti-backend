@@ -1,146 +1,166 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+const mysql = require("mysql2");
+
+// Подключение к MySQL
+const db = mysql.createConnection({
+  host: "localhost",
+  user: "evgenii",
+  password: "60952",
+  database: "DB_RSA"
+});
+
+// Проверка подключения
+db.connect((err) => {
+  if (err) throw err;
+  console.log("MySQL подключён");
+});
+
+
 const bcrypt = require('bcrypt');
 require('dotenv').config(); // <== carica .env
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const USERS_PATH = path.resolve(__dirname, process.env.USERS_FILE);
-const FRUTTI_PATH = path.resolve(__dirname, process.env.FRUTTI_FILE);
-const UTENTI_PATH = path.resolve(__dirname, process.env.UTENTI_FILE);
 
 app.use(cors());
 app.use(express.json());
 
+
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
 
-  const usersRaw = fs.readFileSync(USERS_PATH, 'utf-8');
-  const users = JSON.parse(usersRaw);
+  db.query('SELECT * FROM password WHERE username = ?', [username], async (err, results) => {
+    if (err) return res.status(500).json({ error: 'Errore DB' });
+    if (results.length === 0) return res.status(401).json({ error: 'Utente non trovato' });
 
-  const user = users.find(u => u.username === username);
-  if (!user) return res.status(401).json({ error: 'Utente non trovato' });
+    const user = results[0];
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(401).json({ error: 'Password errata' });
 
-  console.log(password);
-  console.log(user);
-  const valid = await bcrypt.compare(password, user.password);
-  console.log(valid);
-  if (!valid) return res.status(401).json({ error: 'Password errata' });
-
-  res.json({ message: 'Login riuscito' });
+    res.json({ message: 'Login riuscito' });
+  });
 });
+
 
 app.get('/api/frutti', (req, res) => {
-  fs.readFile(FRUTTI_PATH, 'utf8', (err, data) => {
-    if (err) return res.status(500).json({ error: 'Errore nella lettura del file' });
-    res.json(JSON.parse(data));
+  db.query('SELECT * FROM frutti', (err, results) => {
+    if (err) return res.status(500).json({ error: 'Errore lettura DB' });
+    res.json(results);
   });
 });
 
-// ✅ Aggiungi un frutto
 app.post('/api/frutti', (req, res) => {
-  const nuovo = { ...req.body, id: Date.now() };
-  fs.readFile(FRUTTI_PATH, 'utf8', (err, data) => {
-    if (err) return res.status(500).json({ error: 'Errore nella lettura del file' });
-    const frutti = JSON.parse(data);
-    frutti.push(nuovo);
-    fs.writeFile(FRUTTI_PATH, JSON.stringify(frutti, null, 2), err => {
-      if (err) return res.status(500).json({ error: 'Errore nella scrittura' });
-      res.json(nuovo);
-    });
-  });
+  const { nome, descrizione, categoria } = req.body;
+  db.query(
+    'INSERT INTO frutti (nome, descrizione, categoria) VALUES (?, ?, ?)',
+    [nome, descrizione, categoria],
+    (err, result) => {
+      if (err) return res.status(500).json({ error: 'Errore scrittura DB' });
+      res.json({ id: result.insertId, nome, descrizione, categoria });
+    }
+  );
 });
 
-// ✅ Modifica un frutto
 app.put('/api/frutti/:id', (req, res) => {
   const id = parseInt(req.params.id);
   const { nome, descrizione, categoria } = req.body;
-  fs.readFile(FRUTTI_PATH, 'utf8', (err, data) => {
-    if (err) return res.status(500).json({ error: 'Errore lettura' });
-    let frutti = JSON.parse(data);
-    const index = frutti.findIndex(f => f.id === id);
-    if (index === -1) return res.status(404).json({ error: 'Non trovato' });
-    frutti[index] = { ...frutti[index], nome, descrizione, categoria };
-    fs.writeFile(FRUTTI_PATH, JSON.stringify(frutti, null, 2), err => {
-      if (err) return res.status(500).json({ error: 'Errore scrittura' });
-      res.json(frutti[index]);
-    });
-  });
+  db.query(
+    'UPDATE frutti SET nome = ?, descrizione = ?, categoria = ? WHERE id = ?',
+    [nome, descrizione, categoria, id],
+    (err) => {
+      if (err) return res.status(500).json({ error: 'Errore aggiornamento' });
+      res.json({ id, nome, descrizione, categoria });
+    }
+  );
 });
 
-// ✅ Elimina un frutto
 app.delete('/api/frutti/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  fs.readFile(FRUTTI_PATH, 'utf8', (err, data) => {
-    if (err) return res.status(500).json({ error: 'Errore lettura' });
-    let frutti = JSON.parse(data);
-    const nuovo = frutti.filter(f => f.id !== id);
-    fs.writeFile(FRUTTI_PATH, JSON.stringify(nuovo, null, 2), err => {
-      if (err) return res.status(500).json({ error: 'Errore scrittura' });
-      res.json({ success: true });
-    });
+  db.query('DELETE FROM frutti WHERE id = ?', [id], (err, result) => {
+    if (err) return res.status(500).json({ error: 'Errore cancellazione' });
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: 'Elemento non trovato' });
+    res.json({ success: true });
   });
 });
 
 
 
 app.get('/api/utenti', (req, res) => {
-  fs.readFile(UTENTI_PATH, 'utf8', (err, data) => {
-    if (err) return res.status(500).json({ error: 'Errore lettura file utenti' });
-    res.json(JSON.parse(data));
+  db.query('SELECT * FROM utenti', (err, results) => {
+    if (err) return res.status(500).json({ error: 'Errore lettura utenti' });
+    res.json(results);
   });
 });
-
 
 app.post('/api/utenti', (req, res) => {
-  const nuovo = { ...req.body, id: Date.now() };
-  fs.readFile(UTENTI_PATH, 'utf8', (err, data) => {
-    if (err) return res.status(500).json({ error: 'Errore lettura file' });
-    const utenti = JSON.parse(data);
-    utenti.push(nuovo);
-    fs.writeFile(UTENTI_PATH, JSON.stringify(utenti, null, 2), err => {
-      if (err) return res.status(500).json({ error: 'Errore scrittura file' });
-      res.json(nuovo);
-    });
-  });
+  const nuovo = req.body;
+  db.query(
+    'INSERT INTO utenti (reparto, stanza, cognome, bagno, barba, autonomia, malattia, alimentazione, dentiera, altro) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      nuovo.reparto,
+      nuovo.stanza,
+      nuovo.cognome,
+      nuovo.bagno,
+      nuovo.barba,
+      nuovo.autonomia,
+      nuovo.malattia,
+      nuovo.alimentazione,
+      nuovo.dentiera,
+      nuovo.altro,
+    ],
+    (err, result) => {
+      if (err) return res.status(500).json({ error: 'Errore inserimento' });
+      res.json({ id: result.insertId, ...nuovo });
+    }
+  );
 });
-
 
 app.put('/api/utenti/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  const datiModificati = req.body;
-
-  fs.readFile(UTENTI_PATH, 'utf8', (err, data) => {
-    if (err) return res.status(500).json({ error: 'Errore lettura' });
-    let utenti = JSON.parse(data);
-    const index = utenti.findIndex(u => u.id === id);
-    if (index === -1) return res.status(404).json({ error: 'Utente non trovato' });
-    utenti[index] = { ...utenti[index], ...datiModificati };
-    fs.writeFile(UTENTI_PATH, JSON.stringify(utenti, null, 2), err => {
-      if (err) return res.status(500).json({ error: 'Errore scrittura' });
-      res.json(utenti[index]);
-    });
-  });
+  const modifiche = req.body;
+  db.query(
+    'UPDATE utenti SET reparto = ?, stanza = ?, cognome = ?, bagno = ?, barba = ?, autonomia = ?, malattia = ?, alimentazione = ?, dentiera = ?, altro = ? WHERE id = ?',
+    [
+      modifiche.reparto,
+      modifiche.stanza,
+      modifiche.cognome,
+      modifiche.bagno,
+      modifiche.barba,
+      modifiche.autonomia,
+      modifiche.malattia,
+      modifiche.alimentazione,
+      modifiche.dentiera,
+      modifiche.altro,
+      id,
+    ],
+    (err) => {
+      if (err) return res.status(500).json({ error: 'Errore aggiornamento' });
+      res.json({ id, ...modifiche });
+    }
+  );
 });
-
 
 app.delete('/api/utenti/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  fs.readFile(UTENTI_PATH, 'utf8', (err, data) => {
-    if (err) return res.status(500).json({ error: 'Errore lettura' });
-    let utenti = JSON.parse(data);
-    const nuovo = utenti.filter(u => u.id !== id);
-    if (nuovo.length === utenti.length)
+  db.query('DELETE FROM utenti WHERE id = ?', [id], (err, result) => {
+    if (err) return res.status(500).json({ error: 'Errore cancellazione' });
+    if (result.affectedRows === 0)
       return res.status(404).json({ error: 'Utente non trovato' });
-    fs.writeFile(UTENTI_PATH, JSON.stringify(nuovo, null, 2), err => {
-      if (err) return res.status(500).json({ error: 'Errore scrittura' });
-      res.json({ success: true });
-    });
+    res.json({ success: true });
   });
 });
+
+{/***
+async function CP() {
+  const hash = await bcrypt.hash("11111", 10);
+  console.log(hash);
+}
+CP();
+**/}
+
 
 
 app.listen(PORT, () => {
