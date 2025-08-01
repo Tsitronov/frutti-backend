@@ -1,10 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-const bcrypt = require('bcrypt'); // 👈 deve venire prima
+const bcrypt = require('bcrypt');
 require('dotenv').config();
 
-const db = new Pool({
+const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production'
     ? { rejectUnauthorized: false }
@@ -14,7 +14,7 @@ const db = new Pool({
 // ✅ Funzione per creare le tabelle (PostgreSQL style)
 async function createTables() {
   try {
-    await db.query(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS utenti (
         id SERIAL PRIMARY KEY,
         reparto VARCHAR(50),
@@ -31,7 +31,7 @@ async function createTables() {
     `);
     console.log('✅ Tabella utenti pronta');
 
-    await db.query(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS password (
         id SERIAL PRIMARY KEY,
         username VARCHAR(50),
@@ -41,7 +41,7 @@ async function createTables() {
     `);
     console.log('✅ Tabella password pronta');
 
-    await db.query(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS frutti (
         id SERIAL PRIMARY KEY,
         nome VARCHAR(50),
@@ -65,7 +65,7 @@ async function inserisciUtente() {
   const categoria = '1';
 
   try {
-    const result = await db.query(
+    const result = await pool.query(
       'INSERT INTO password (username, password, categoria) VALUES ($1, $2, $3) RETURNING *',
       [username, hashedPassword, categoria]
     );
@@ -73,7 +73,7 @@ async function inserisciUtente() {
   } catch (err) {
     console.error('❌ Errore inserimento:', err);
   } finally {
-    db.end();
+    pool.end();
   }
 }
 
@@ -82,13 +82,13 @@ inserisciUtente();
 
 
 // Test connection and show detailed info
-db.connect()
+pool.connect()
   .then(client => {
     console.log("✅ PostgreSQL connected successfully");
     client.release();
     
     // Test a simple query
-    return db.query('SELECT NOW() as current_time');
+    return pool.query('SELECT NOW() as current_time');
   })
   .then(result => {
     console.log("✅ Database query test successful:", result.rows[0]);
@@ -108,7 +108,7 @@ app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
 
   try {
-    const result = await db.query('SELECT * FROM password WHERE username = $1', [username]);
+    const result = await pool.query('SELECT * FROM password WHERE username = $1', [username]);
     
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Utente non trovato' });
@@ -124,7 +124,7 @@ app.post('/api/login', async (req, res) => {
     res.json({ message: 'Login riuscito' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Errore DB' });
+    res.status(500).json({ error: 'Errore pool' });
   }
 });
 
@@ -133,7 +133,7 @@ app.get('/api/frutti', async (req, res) => {
   
   try {
     // Check if table exists first
-    const tableCheck = await db.query(`
+    const tableCheck = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -150,14 +150,14 @@ app.get('/api/frutti', async (req, res) => {
       });
     }
     
-    const result = await db.query('SELECT * FROM frutti');
+    const result = await pool.query('SELECT * FROM frutti');
     console.log("✅ Query successful, found", result.rows.length, "records");
     res.json(result.rows);
     
   } catch (err) {
     console.error("❌ Database error in /api/frutti:", err);
     res.status(500).json({ 
-      error: 'Errore lettura DB',
+      error: 'Errore lettura pool',
       details: err.message,
       code: err.code 
     });
@@ -168,14 +168,14 @@ app.post('/api/frutti', async (req, res) => {
   const { nome, descrizione, categoria } = req.body;
   
   try {
-    const result = await db.query(
+    const result = await pool.query(
       'INSERT INTO frutti (nome, descrizione, categoria) VALUES ($1, $2, $3) RETURNING *',
       [nome, descrizione, categoria]
     );
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Errore scrittura DB' });
+    res.status(500).json({ error: 'Errore scrittura pool' });
   }
 });
 
@@ -184,7 +184,7 @@ app.put('/api/frutti/:id', async (req, res) => {
   const { nome, descrizione, categoria } = req.body;
   
   try {
-    const result = await db.query(
+    const result = await pool.query(
       'UPDATE frutti SET nome = $1, descrizione = $2, categoria = $3 WHERE id = $4 RETURNING *',
       [nome, descrizione, categoria, id]
     );
@@ -204,7 +204,7 @@ app.delete('/api/frutti/:id', async (req, res) => {
   const id = parseInt(req.params.id);
   
   try {
-    const result = await db.query('DELETE FROM frutti WHERE id = $1', [id]);
+    const result = await pool.query('DELETE FROM frutti WHERE id = $1', [id]);
     
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Elemento non trovato' });
@@ -222,7 +222,7 @@ app.get('/api/utenti', async (req, res) => {
   
   try {
     // Check if table exists first
-    const tableCheck = await db.query(`
+    const tableCheck = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -239,7 +239,7 @@ app.get('/api/utenti', async (req, res) => {
       });
     }
     
-    const result = await db.query('SELECT * FROM utenti');
+    const result = await pool.query('SELECT * FROM utenti');
     console.log("✅ Query successful, found", result.rows.length, "records");
     res.json(result.rows);
     
@@ -257,7 +257,7 @@ app.post('/api/utenti', async (req, res) => {
   const nuovo = req.body;
   
   try {
-    const result = await db.query(
+    const result = await pool.query(
       'INSERT INTO utenti (reparto, stanza, cognome, bagno, barba, autonomia, malattia, alimentazione, dentiera, altro) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
       [
         nuovo.reparto,
@@ -284,7 +284,7 @@ app.put('/api/utenti/:id', async (req, res) => {
   const modifiche = req.body;
   
   try {
-    const result = await db.query(
+    const result = await pool.query(
       'UPDATE utenti SET reparto = $1, stanza = $2, cognome = $3, bagno = $4, barba = $5, autonomia = $6, malattia = $7, alimentazione = $8, dentiera = $9, altro = $10 WHERE id = $11 RETURNING *',
       [
         modifiche.reparto,
@@ -316,7 +316,7 @@ app.delete('/api/utenti/:id', async (req, res) => {
   const id = parseInt(req.params.id);
   
   try {
-    const result = await db.query('DELETE FROM utenti WHERE id = $1', [id]);
+    const result = await pool.query('DELETE FROM utenti WHERE id = $1', [id]);
     
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Utente non trovato' });
