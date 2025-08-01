@@ -4,10 +4,10 @@ const mysql = require("mysql2");
 
 // Подключение к MySQL
 const db = mysql.createConnection({
-  host: "localhost",
-  user: "evgenii",
-  password: "60952",
-  database: "DB_RSA"
+  host: "dpg-d26eejqdbo4c73f4rqog-a",
+  user: "db_rsa_user",
+  password: "BdkbzW52ydmcObVlCtxOSBhMhTAEie9z",
+  database: "db_rsa"
 });
 
 // Проверка подключения
