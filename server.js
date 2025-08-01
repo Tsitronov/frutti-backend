@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const bcrypt = require('bcrypt'); // 👈 deve venire prima
 require('dotenv').config();
 
 const db = new Pool({
@@ -96,8 +97,6 @@ db.connect()
     console.error("❌ Database connection/query error:", err);
   });
 
-const bcrypt = require('bcrypt');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
