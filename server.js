@@ -1,14 +1,84 @@
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg'); // Changed from mysql2 to pg
+const { Pool } = require('pg');
+require('dotenv').config();
 
-// PostgreSQL connection configuration
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' 
-    ? { rejectUnauthorized: false }  // Production (internal URL on Render)
-    : { rejectUnauthorized: false }  // Development (external URL)
+  ssl: process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: false }
+    : false
 });
+
+// ✅ Funzione per creare le tabelle (PostgreSQL style)
+async function createTables() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS utenti (
+        id SERIAL PRIMARY KEY,
+        reparto VARCHAR(50),
+        stanza VARCHAR(50),
+        cognome VARCHAR(100),
+        bagno VARCHAR(50),
+        barba VARCHAR(50),
+        autonomia VARCHAR(50),
+        malattia TEXT,
+        alimentazione VARCHAR(50),
+        dentiera VARCHAR(10),
+        altro TEXT
+      );
+    `);
+    console.log('✅ Tabella utenti pronta');
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS password (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(50),
+        password VARCHAR(255),
+        categoria VARCHAR(50) DEFAULT '2'
+      );
+    `);
+    console.log('✅ Tabella password pronta');
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS frutti (
+        id SERIAL PRIMARY KEY,
+        nome VARCHAR(50),
+        categoria VARCHAR(50),
+        descrizione TEXT
+      );
+    `);
+    console.log('✅ Tabella frutti pronta');
+  } catch (err) {
+    console.error('❌ Errore nella creazione delle tabelle:', err);
+  }
+}
+
+createTables();
+
+
+async function inserisciUtente() {
+  const username = 'admin';
+  const plainPassword = '12345';
+  const hashedPassword = await bcrypt.hash(plainPassword, 10);
+  const categoria = '1';
+
+  try {
+    const result = await db.query(
+      'INSERT INTO password (username, password, categoria) VALUES ($1, $2, $3) RETURNING *',
+      [username, hashedPassword, categoria]
+    );
+    console.log('✅ Utente inserito:', result.rows[0]);
+  } catch (err) {
+    console.error('❌ Errore inserimento:', err);
+  } finally {
+    db.end();
+  }
+}
+
+inserisciUtente();
+
+
 
 // Test connection and show detailed info
 db.connect()
