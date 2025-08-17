@@ -14,8 +14,9 @@ const db = new Pool({
 // ✅ Funzione per creare le tabelle (PostgreSQL style)
 async function createTables() {
   try {
-    await db.query(`ALTER TABLE utenti RENAME COLUMN dentiera TO accessori, RENAME COLUMN malattia TO vestiti; `);
-    console.log('✅ Tabella frutti pronta');
+    await db.query(`ALTER TABLE utenti RENAME COLUMN accessori TO dentiera;`);
+    await db.query(`ALTER TABLE utenti RENAME COLUMN vestiti TO malattia;`);
+    console.log('✅ Tabella utenti aggiornata');
   } catch (err) {
     console.error('❌ Errore nella creazione delle tabelle:', err);
   }
@@ -194,7 +195,7 @@ app.post('/api/utenti', async (req, res) => {
 
   try {
     const result = await db.query(
-      'INSERT INTO utenti (reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
+      'INSERT INTO utenti (reparto, stanza, cognome, bagno, barba, autonomia, malattia, alimentazione, dentiera, altro) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
       [
         nuovo.reparto,
         nuovo.stanza,
@@ -202,9 +203,9 @@ app.post('/api/utenti', async (req, res) => {
         nuovo.bagno,
         nuovo.barba,
         nuovo.autonomia,
-        nuovo.vestiti,
+        nuovo.malattia,
         nuovo.alimentazione,
-        nuovo.accessori,
+        nuovo.dentiera,
         nuovo.altro,
       ]
     );
@@ -221,7 +222,7 @@ app.put('/api/utenti/:id', async (req, res) => {
 
   try {
     const result = await db.query(
-      'UPDATE utenti SET reparto = $1, stanza = $2, cognome = $3, bagno = $4, barba = $5, autonomia = $6, vestiti = $7, alimentazione = $8, accessori = $9, altro = $10 WHERE id = $11 RETURNING *',
+      'UPDATE utenti SET reparto = $1, stanza = $2, cognome = $3, bagno = $4, barba = $5, autonomia = $6, malattia = $7, alimentazione = $8, dentiera = $9, altro = $10 WHERE id = $11 RETURNING *',
       [
         modifiche.reparto,
         modifiche.stanza,
@@ -229,9 +230,9 @@ app.put('/api/utenti/:id', async (req, res) => {
         modifiche.bagno,
         modifiche.barba,
         modifiche.autonomia,
-        modifiche.vestiti,
+        modifiche.malattia,
         modifiche.alimentazione,
-        modifiche.accessori,
+        modifiche.dentiera,
         modifiche.altro,
         id,
       ]
