@@ -11,6 +11,7 @@ const db = new Pool({
   }
 });
 
+<<<<<<< HEAD
 // ✅ Funzione per creare le tabelle (PostgreSQL style)
 async function createTables() {
   try {
@@ -43,6 +44,8 @@ async function inserisciUtente() {
 }
 
 inserisciUtente();
+=======
+>>>>>>> 901f3038ec97a0903c96041e96d015fcff541df6
 
 
 
