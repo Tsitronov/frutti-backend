@@ -11,7 +11,7 @@ const db = new Pool({
   }
 });
 
-<<<<<<< HEAD
+
 // ✅ Funzione per creare le tabelle (PostgreSQL style)
 async function createTables() {
   try {
@@ -24,28 +24,6 @@ async function createTables() {
 }
 
 createTables();
-
-
-async function inserisciUtente() {
-  const username = 'squadra';
-  const plainPassword = 'perlavoro25';
-  const hashedPassword = await bcrypt.hash(plainPassword, 10);
-  const categoria = '1';
-
-  try {
-    const result = await db.query(
-      'INSERT INTO password (username, password, categoria) VALUES ($1, $2, $3) RETURNING *',
-      [username, hashedPassword, categoria]
-    );
-    console.log('✅ Utente inserito:', result.rows[0]);
-  } catch (err) {
-    console.error('❌ Errore inserimento:', err);
-  } 
-}
-
-inserisciUtente();
-=======
->>>>>>> 901f3038ec97a0903c96041e96d015fcff541df6
 
 
 
@@ -209,7 +187,7 @@ app.post('/api/utenti', async (req, res) => {
         nuovo.malattia,
         nuovo.alimentazione,
         nuovo.dentiera,
-        nuovo.altro,
+        nuovo.altro
       ]
     );
     res.json(result.rows[0]);
@@ -237,7 +215,7 @@ app.put('/api/utenti/:id', async (req, res) => {
         modifiche.alimentazione,
         modifiche.dentiera,
         modifiche.altro,
-        id,
+        id
       ]
     );
 
