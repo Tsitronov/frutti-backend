@@ -12,16 +12,13 @@ const db = new Pool({
 });
 
 
-const bcrypt = require('bcrypt');
-require('dotenv').config(); // <== carica .env
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 
 app.use(cors());
 app.use(express.json());
-app.
+
 
 
 app.post('/api/login', async (req, res) => {
