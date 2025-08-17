@@ -14,41 +14,7 @@ const db = new Pool({
 // ✅ Funzione per creare le tabelle (PostgreSQL style)
 async function createTables() {
   try {
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS utenti (
-        id SERIAL PRIMARY KEY,
-        reparto VARCHAR(50),
-        stanza VARCHAR(50),
-        cognome VARCHAR(100),
-        bagno VARCHAR(50),
-        barba VARCHAR(50),
-        autonomia VARCHAR(50),
-        malattia TEXT,
-        alimentazione VARCHAR(50),
-        dentiera VARCHAR(10),
-        altro TEXT
-      );
-    `);
-    console.log('✅ Tabella utenti pronta');
-
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS password (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50),
-        password VARCHAR(255),
-        categoria VARCHAR(50) DEFAULT '2'
-      );
-    `);
-    console.log('✅ Tabella password pronta');
-
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS frutti (
-        id SERIAL PRIMARY KEY,
-        nome VARCHAR(50),
-        categoria VARCHAR(50),
-        descrizione TEXT
-      );
-    `);
+    await db.query(`ALTER TABLE utenti RENAME COLUMN dentiera TO accessori, RENAME COLUMN malattia TO vestiti; `);
     console.log('✅ Tabella frutti pronta');
   } catch (err) {
     console.error('❌ Errore nella creazione delle tabelle:', err);
@@ -59,8 +25,8 @@ createTables();
 
 
 async function inserisciUtente() {
-  const username = 'admin';
-  const plainPassword = '12345';
+  const username = 'squadra';
+  const plainPassword = 'perlavoro25';
   const hashedPassword = await bcrypt.hash(plainPassword, 10);
   const categoria = '1';
 
@@ -228,7 +194,7 @@ app.post('/api/utenti', async (req, res) => {
 
   try {
     const result = await db.query(
-      'INSERT INTO utenti (reparto, stanza, cognome, bagno, barba, autonomia, malattia, alimentazione, dentiera, altro) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
+      'INSERT INTO utenti (reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
       [
         nuovo.reparto,
         nuovo.stanza,
@@ -236,9 +202,9 @@ app.post('/api/utenti', async (req, res) => {
         nuovo.bagno,
         nuovo.barba,
         nuovo.autonomia,
-        nuovo.malattia,
+        nuovo.vestiti,
         nuovo.alimentazione,
-        nuovo.dentiera,
+        nuovo.accessori,
         nuovo.altro,
       ]
     );
@@ -255,7 +221,7 @@ app.put('/api/utenti/:id', async (req, res) => {
 
   try {
     const result = await db.query(
-      'UPDATE utenti SET reparto = $1, stanza = $2, cognome = $3, bagno = $4, barba = $5, autonomia = $6, malattia = $7, alimentazione = $8, dentiera = $9, altro = $10 WHERE id = $11 RETURNING *',
+      'UPDATE utenti SET reparto = $1, stanza = $2, cognome = $3, bagno = $4, barba = $5, autonomia = $6, vestiti = $7, alimentazione = $8, accessori = $9, altro = $10 WHERE id = $11 RETURNING *',
       [
         modifiche.reparto,
         modifiche.stanza,
@@ -263,9 +229,9 @@ app.put('/api/utenti/:id', async (req, res) => {
         modifiche.bagno,
         modifiche.barba,
         modifiche.autonomia,
-        modifiche.malattia,
+        modifiche.vestiti,
         modifiche.alimentazione,
-        modifiche.dentiera,
+        modifiche.accessori,
         modifiche.altro,
         id,
       ]
