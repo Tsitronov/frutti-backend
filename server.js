@@ -19,16 +19,13 @@ const db = new Pool({
 
 async function alterTab() {
   try {
-    const result = await db.query(
-      'ALTER TABLE utenti RENAME COLUMN malattia TO vestiti; ALTER TABLE utenti RENAME COLUMN dentiera TO accessori;'
-    );
-    console.log('✅ Utente alterTab:', result.rows[0]);
+    await db.query('ALTER TABLE utenti RENAME COLUMN malattia TO vestiti');
+    await db.query('ALTER TABLE utenti RENAME COLUMN dentiera TO accessori');
+    console.log('✅ Colonne rinominate con successo');
   } catch (err) {
     console.error('❌ Errore alterTab:', err);
   } 
 }
-
-alterTab();
 
 
 
