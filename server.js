@@ -62,12 +62,12 @@ app.get("/api/utenti", async (req, res) => {
 
 // ➕ Aggiungi utente
 app.post("/api/utenti", async (req, res) => {
-  const { stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
+  const { reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
   try {
     const result = await db.query(
-      `INSERT INTO utenti (stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro]
+      `INSERT INTO utenti (reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -78,12 +78,12 @@ app.post("/api/utenti", async (req, res) => {
 // ✏️ Modifica utente
 app.put("/api/utenti/:id", async (req, res) => {
   const { id } = req.params;
-  const { stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
+  const { reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
   try {
     const result = await db.query(
-      `UPDATE utenti SET stanza=$1, cognome=$2, autonomia=$3, vestiti=$4,
-       alimentazione=$5, accessori=$6, altro=$7 WHERE id=$8 RETURNING *`,
-      [stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro, id]
+      `UPDATE utenti SET reparto=$1, stanza=$2, cognome=$3, autonomia=$4, vestiti=$5,
+       alimentazione=$6, accessori=$7, altro=$8 WHERE id=$9 RETURNING *`,
+      [reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro, id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: "Utente non trovato" });
     res.json(result.rows[0]);
