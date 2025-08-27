@@ -37,6 +37,62 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+// ====================== ADMIN ======================
+
+// ✅ GET – tutti gli admin
+app.get('/api/admin', async (req, res) => {
+  try {
+    const results = await db.query('SELECT id, username, categoria FROM password');
+    res.json(results.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Errore lettura DB', details: err.message });
+  }
+});
+
+
+app.post('/api/admin', async (req, res) => {
+  const { username, password, categoria } = req.body;
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await db.query(
+      'INSERT INTO password (username, password, categoria) VALUES ($1, $2, $3) RETURNING *',
+      [username, hashedPassword, categoria]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Errore scrittura DB', details: err.message });
+  }
+});
+
+
+// ✅ PUT – aggiorna admin
+app.put('/api/admin/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { username, categoria } = req.body;
+  try {
+    const result = await db.query(
+      'UPDATE password SET username = $1, categoria = $2 WHERE id = $3 RETURNING *',
+      [username, categoria, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Elemento non trovato' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Errore aggiornamento', details: err.message });
+  }
+});
+
+// ✅ DELETE – elimina admin
+app.delete('/api/admin/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  try {
+    const result = await db.query('DELETE FROM password WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Elemento non trovato' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Errore cancellazione', details: err.message });
+  }
+});
+
 
 // ====================== UTENTI ======================
 // 📥 Tutti gli utenti
