@@ -19,6 +19,7 @@ const db = new Pool({
 
 
 // ====================== LOGIN ======================
+
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -30,12 +31,16 @@ app.post("/api/login", async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: "Password errata" });
 
-    res.json({ message: "Login riuscito" });
+    res.json({ 
+      message: "Login riuscito",
+      categoria: String(user.categoria) // Преобразуем в строку для совместимости с фронтендом
+    });
   } catch (err) {
     console.error("Errore login:", err);
     res.status(500).json({ error: "Errore DB" });
   }
 });
+
 
 // ====================== ADMIN ======================
 
@@ -81,6 +86,7 @@ app.put('/api/admin/:id', async (req, res) => {
   }
 });
 
+
 // ✅ DELETE – elimina admin
 app.delete('/api/admin/:id', async (req, res) => {
   const id = parseInt(req.params.id);
@@ -107,12 +113,12 @@ app.get("/api/utenti", async (req, res) => {
 
 // ➕ Aggiungi utente
 app.post("/api/utenti", async (req, res) => {
-  const { reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
+  const { reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
   try {
     const result = await db.query(
-      `INSERT INTO utenti (reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro]
+      `INSERT INTO utenti (reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -123,12 +129,12 @@ app.post("/api/utenti", async (req, res) => {
 // ✏️ Modifica utente
 app.put("/api/utenti/:id", async (req, res) => {
   const { id } = req.params;
-  const { reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
+  const { reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
   try {
     const result = await db.query(
-      `UPDATE utenti SET reparto=$1, stanza=$2, cognome=$3, autonomia=$4, vestiti=$5,
-       alimentazione=$6, accessori=$7, altro=$8 WHERE id=$9 RETURNING *`,
-      [reparto, stanza, cognome, autonomia, vestiti, alimentazione, accessori, altro, id]
+      `UPDATE utenti SET reparto=$1, stanza=$2, cognome=$3, bagno=$4, barba=$5, autonomia=$6, vestiti=$7,
+       alimentazione=$8, accessori=$9, altro=$10 WHERE id=$11 RETURNING *`,
+      [reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro, id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: "Utente non trovato" });
     res.json(result.rows[0]);
@@ -136,6 +142,7 @@ app.put("/api/utenti/:id", async (req, res) => {
     res.status(500).json({ error: "Errore aggiornamento utenti" });
   }
 });
+
 
 // ❌ Elimina utente
 app.delete("/api/utenti/:id", async (req, res) => {
