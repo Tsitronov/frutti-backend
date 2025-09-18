@@ -17,6 +17,31 @@ const db = new Pool({
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
+async function cambiTable() {
+  try {
+    await db.query(`
+      ALTER TABLE IF EXISTS utenti
+      ALTER COLUMN reparto TYPE VARCHAR(255) USING reparto::VARCHAR(255),
+      ALTER COLUMN stanza TYPE VARCHAR(255) USING stanza::VARCHAR(255),
+      ALTER COLUMN cognome TYPE VARCHAR(255) USING cognome::VARCHAR(255),
+      ALTER COLUMN bagno TYPE VARCHAR(255) USING bagno::VARCHAR(255),
+      ALTER COLUMN barba TYPE VARCHAR(255) USING barba::VARCHAR(255),
+      ALTER COLUMN autonomia TYPE VARCHAR(255) USING autonomia::VARCHAR(255),
+      ALTER COLUMN vestiti TYPE VARCHAR(255) USING vestiti::VARCHAR(255),
+      ALTER COLUMN alimentazione TYPE VARCHAR(255) USING alimentazione::VARCHAR(255),
+      ALTER COLUMN accessori TYPE VARCHAR(255) USING accessori::VARCHAR(255);
+    `);
+    console.log("✅ Tabella utenti cambiata");
+  } catch (err) {
+    console.error("❌ Errore nella modifica della tabella:", err);
+  } finally {
+    await db.end();
+  }
+}
+
+cambiTable();
+
+
 
 // ====================== LOGIN ======================
 
