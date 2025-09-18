@@ -23,15 +23,15 @@ async function cambiTable() {
   try {
     await db.query(`
       ALTER TABLE IF EXISTS utenti
-      ALTER COLUMN reparto TYPE TEST USING reparto::TEST,
-      ALTER COLUMN stanza TYPE TEST USING stanza::TEST,
-      ALTER COLUMN cognome TYPE TEST USING cognome::TEST,
-      ALTER COLUMN bagno TYPE TEST USING bagno::TEST,
-      ALTER COLUMN barba TYPE TEST USING barba::TEST,
-      ALTER COLUMN autonomia TYPE TEST USING autonomia::TEST,
-      ALTER COLUMN vestiti TYPE TEST USING vestiti::TEST,
-      ALTER COLUMN alimentazione TYPE TEST USING alimentazione::TEST,
-      ALTER COLUMN accessori TYPE TEST USING accessori::TEST;
+      ALTER COLUMN reparto TYPE TEXT USING reparto::TEXT,
+      ALTER COLUMN stanza TYPE TEXT USING stanza::TEXT,
+      ALTER COLUMN cognome TYPE TEXT USING cognome::TEXT,
+      ALTER COLUMN bagno TYPE TEXT USING bagno::TEXT,
+      ALTER COLUMN barba TYPE TEXT USING barba::TEXT,
+      ALTER COLUMN autonomia TYPE TEXT USING autonomia::TEXT,
+      ALTER COLUMN vestiti TYPE TEXT USING vestiti::TEXT,
+      ALTER COLUMN alimentazione TYPE TEXT USING alimentazione::TEXT,
+      ALTER COLUMN accessori TYPE TEXT USING accessori::TEXT;
     `);
     console.log("✅ Tabella utenti cambiata");
   } catch (err) {
