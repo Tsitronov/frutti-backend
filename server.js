@@ -11,6 +11,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// 🔌 Подключение к PostgreSQL (Render)
+const db = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+});
+
+
 async function ricreaTabellaUtenti() {
   try {
     await db.query(`DROP TABLE IF EXISTS utenti;`);
