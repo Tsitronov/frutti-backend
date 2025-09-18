@@ -17,20 +17,20 @@ const db = new Pool({
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
-/*
+
 async function cambiTable() {
   try {
     await db.query(`
       ALTER TABLE IF EXISTS utenti
-      ALTER COLUMN reparto TYPE VARCHAR(255) USING reparto::VARCHAR(255),
-      ALTER COLUMN stanza TYPE VARCHAR(255) USING stanza::VARCHAR(255),
-      ALTER COLUMN cognome TYPE VARCHAR(255) USING cognome::VARCHAR(255),
-      ALTER COLUMN bagno TYPE VARCHAR(255) USING bagno::VARCHAR(255),
-      ALTER COLUMN barba TYPE VARCHAR(255) USING barba::VARCHAR(255),
-      ALTER COLUMN autonomia TYPE VARCHAR(255) USING autonomia::VARCHAR(255),
-      ALTER COLUMN vestiti TYPE VARCHAR(255) USING vestiti::VARCHAR(255),
-      ALTER COLUMN alimentazione TYPE VARCHAR(255) USING alimentazione::VARCHAR(255),
-      ALTER COLUMN accessori TYPE VARCHAR(255) USING accessori::VARCHAR(255);
+      ALTER COLUMN reparto TYPE VARCHAR USING reparto::VARCHAR,
+      ALTER COLUMN stanza TYPE VARCHAR USING stanza::VARCHAR,
+      ALTER COLUMN cognome TYPE VARCHAR USING cognome::VARCHAR,
+      ALTER COLUMN bagno TYPE VARCHAR USING bagno::VARCHAR,
+      ALTER COLUMN barba TYPE VARCHAR USING barba::VARCHAR,
+      ALTER COLUMN autonomia TYPE VARCHAR USING autonomia::VARCHAR,
+      ALTER COLUMN vestiti TYPE VARCHAR USING vestiti::VARCHAR,
+      ALTER COLUMN alimentazione TYPE VARCHAR USING alimentazione::VARCHAR,
+      ALTER COLUMN accessori TYPE VARCHAR USING accessori::VARCHAR;
     `);
     console.log("✅ Tabella utenti cambiata");
   } catch (err) {
@@ -41,8 +41,6 @@ async function cambiTable() {
 }
 
 cambiTable();
-
-*/
 
 
 // ====================== LOGIN ======================
