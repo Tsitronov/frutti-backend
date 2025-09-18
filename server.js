@@ -41,9 +41,7 @@ async function ricreaTabellaUtenti() {
     console.log("✅ Tabella utenti creata");
   } catch (err) {
     console.error("❌ Errore nella ricreazione tabella utenti:", err);
-  } finally {
-    await db.end(); // chiudi solo alla fine
-  }
+  } 
 }
 
 ricreaTabellaUtenti();
