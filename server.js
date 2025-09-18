@@ -11,37 +11,35 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔌 Подключение к PostgreSQL (Render)
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-});
-
-
-
-async function cambiTable() {
+async function ricreaTabellaUtenti() {
   try {
+    await db.query(`DROP TABLE IF EXISTS utenti;`);
+    console.log("✅ Tabella utenti eliminata");
+
     await db.query(`
-      ALTER TABLE IF EXISTS utenti
-      ALTER COLUMN reparto TYPE TEXT USING reparto::TEXT,
-      ALTER COLUMN stanza TYPE TEXT USING stanza::TEXT,
-      ALTER COLUMN cognome TYPE TEXT USING cognome::TEXT,
-      ALTER COLUMN bagno TYPE TEXT USING bagno::TEXT,
-      ALTER COLUMN barba TYPE TEXT USING barba::TEXT,
-      ALTER COLUMN autonomia TYPE TEXT USING autonomia::TEXT,
-      ALTER COLUMN vestiti TYPE TEXT USING vestiti::TEXT,
-      ALTER COLUMN alimentazione TYPE TEXT USING alimentazione::TEXT,
-      ALTER COLUMN accessori TYPE TEXT USING accessori::TEXT;
+      CREATE TABLE utenti (
+        id SERIAL PRIMARY KEY,
+        reparto VARCHAR(255),
+        stanza VARCHAR(255),
+        cognome VARCHAR(255),
+        bagno VARCHAR(255),
+        barba VARCHAR(255),
+        autonomia VARCHAR(255),
+        vestiti VARCHAR(255),
+        alimentazione VARCHAR(255),
+        accessori VARCHAR(255),
+        altro TEXT
+      );
     `);
-    console.log("✅ Tabella utenti cambiata");
+    console.log("✅ Tabella utenti creata");
   } catch (err) {
-    console.error("❌ Errore nella modifica della tabella:", err);
+    console.error("❌ Errore nella ricreazione tabella utenti:", err);
   } finally {
-    await db.end();
+    await db.end(); // chiudi solo alla fine
   }
 }
 
-cambiTable();
+ricreaTabellaUtenti();
 
 
 // ====================== LOGIN ======================
