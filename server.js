@@ -17,6 +17,7 @@ const db = new Pool({
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
+/*
 async function cambiTable() {
   try {
     await db.query(`
@@ -41,6 +42,7 @@ async function cambiTable() {
 
 cambiTable();
 
+*/
 
 
 // ====================== LOGIN ======================
