@@ -18,19 +18,20 @@ const db = new Pool({
 });
 
 
+
 async function cambiTable() {
   try {
     await db.query(`
       ALTER TABLE IF EXISTS utenti
-      ALTER COLUMN reparto TYPE VARCHAR USING reparto::VARCHAR,
-      ALTER COLUMN stanza TYPE VARCHAR USING stanza::VARCHAR,
-      ALTER COLUMN cognome TYPE VARCHAR USING cognome::VARCHAR,
-      ALTER COLUMN bagno TYPE VARCHAR USING bagno::VARCHAR,
-      ALTER COLUMN barba TYPE VARCHAR USING barba::VARCHAR,
-      ALTER COLUMN autonomia TYPE VARCHAR USING autonomia::VARCHAR,
-      ALTER COLUMN vestiti TYPE VARCHAR USING vestiti::VARCHAR,
-      ALTER COLUMN alimentazione TYPE VARCHAR USING alimentazione::VARCHAR,
-      ALTER COLUMN accessori TYPE VARCHAR USING accessori::VARCHAR;
+      ALTER COLUMN reparto TYPE TEST USING reparto::TEST,
+      ALTER COLUMN stanza TYPE TEST USING stanza::TEST,
+      ALTER COLUMN cognome TYPE TEST USING cognome::TEST,
+      ALTER COLUMN bagno TYPE TEST USING bagno::TEST,
+      ALTER COLUMN barba TYPE TEST USING barba::TEST,
+      ALTER COLUMN autonomia TYPE TEST USING autonomia::TEST,
+      ALTER COLUMN vestiti TYPE TEST USING vestiti::TEST,
+      ALTER COLUMN alimentazione TYPE TEST USING alimentazione::TEST,
+      ALTER COLUMN accessori TYPE TEST USING accessori::TEST;
     `);
     console.log("✅ Tabella utenti cambiata");
   } catch (err) {
