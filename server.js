@@ -17,34 +17,22 @@ const db = new Pool({
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
-
-async function ricreaTabellaUtenti() {
+async function createTables() {
   try {
-    await db.query(`DROP TABLE IF EXISTS utenti;`);
-    console.log("✅ Tabella utenti eliminata");
-
     await db.query(`
-      CREATE TABLE utenti (
+      CREATE TABLE IF NOT EXISTS appunti (
         id SERIAL PRIMARY KEY,
-        reparto VARCHAR(255),
-        stanza VARCHAR(255),
-        cognome VARCHAR(255),
-        bagno VARCHAR(255),
-        barba VARCHAR(255),
-        autonomia VARCHAR(255),
-        vestiti VARCHAR(255),
-        alimentazione VARCHAR(255),
-        accessori VARCHAR(255),
-        altro TEXT
+        nome VARCHAR(255),
+        categoria VARCHAR(255),
+        descrizione TEXT
       );
     `);
-    console.log("✅ Tabella utenti creata");
+    console.log('✅ Tabella frutti pronta');
   } catch (err) {
-    console.error("❌ Errore nella ricreazione tabella utenti:", err);
-  } 
+    console.error('❌ Errore nella creazione delle tabelle:', err);
+  }
 }
-
-ricreaTabellaUtenti();
+createTables();
 
 
 // ====================== LOGIN ======================
@@ -236,6 +224,59 @@ app.delete("/api/frutti/:id", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Errore cancellazione frutti" });
+  }
+});
+
+// ====================== APPUNTI ======================
+// 📥 Tutti i appunti
+app.get("/api/appunti", async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM appunti ORDER BY id ASC");
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Errore lettura appunti" });
+  }
+});
+
+// ➕ Aggiungi frutto
+app.post("/api/appunti", async (req, res) => {
+  const { nome, descrizione, categoria } = req.body;
+  try {
+    const result = await db.query(
+      "INSERT INTO appunti (nome, descrizione, categoria) VALUES ($1,$2,$3) RETURNING *",
+      [nome, descrizione, categoria]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore scrittura appunti" });
+  }
+});
+
+// ✏️ Modifica frutto
+app.put("/api/appunti/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nome, descrizione, categoria } = req.body;
+  try {
+    const result = await db.query(
+      "UPDATE appunti SET nome=$1, descrizione=$2, categoria=$3 WHERE id=$4 RETURNING *",
+      [nome, descrizione, categoria, id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Frutto non trovato" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore aggiornamento appunti" });
+  }
+});
+
+// ❌ Elimina frutto
+app.delete("/api/appunti/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.query("DELETE FROM appunti WHERE id=$1", [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Frutto non trovato" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore cancellazione appunti" });
   }
 });
 
