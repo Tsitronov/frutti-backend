@@ -16,6 +16,22 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? 'https://frutti.vercel.app'
+    : 'http://localhost:3000',
+  credentials: true,  // Если нужны cookies/auth
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  // Для /upload POST
+  allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']  // header
+}));
+
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something broke!' });
+});
+
+
 // 👉 КРИТИЧНО: Для отдачи фото (иначе 404 на файлы!)
 app.use('/uploads', express.static('uploads'));
 
