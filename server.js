@@ -12,7 +12,6 @@ dotenv.config();
 const { Pool } = pkg;
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
@@ -759,6 +758,4 @@ app.delete("/api/appunti/:id", async (req, res) => {
 const PORT = process.env.PORT || 3004;
 app.listen(PORT, async () => {
   console.log(`✅ Server avviato su porta ${PORT}`);
-  await createTables();
-  await inserisciDemoDati();
 });
