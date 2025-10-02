@@ -13,16 +13,18 @@ const { Pool } = pkg;
 
 const app = express();
 
-app.use(cors());
+
 app.use(express.json());
 
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? 'https://frutti.vercel.app'
-    : 'http://localhost:3000',
-  credentials: true,  // Если нужны cookies/auth
+  origin: [
+    process.env.NODE_ENV === 'production' 
+      ? 'https://frutti.vercel.app'  // Prod Vercel
+      : 'http://localhost:3000'      // Dev localhost
+  ],
+  credentials: true,  // Если auth/cookies
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  // Для /upload POST
-  allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']  // header
+  allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']  // Твои headers
 }));
 
 
@@ -38,7 +40,7 @@ app.use('/uploads', express.static('uploads'));
 // 🔌 Подключение к PostgreSQL (Render)
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  ssl: { rejectUnauthorized: false } 
 });
 
 // Проверка подключения и создание таблиц
