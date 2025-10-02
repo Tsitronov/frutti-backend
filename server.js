@@ -97,23 +97,22 @@ const uploadPhotos = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
       const uploadDir = 'uploads/';
-      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
       cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      cb(null, uniqueSuffix + path.extname(file.originalname));
+      const filename = uniqueSuffix + path.extname(file.originalname);
+      cb(null, filename);
     }
   }),
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
-      cb(null, true);
-    } else {
-      cb(new Error('Только JPEG или PNG!'), false);
-    }
+    if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') cb(null, true);
+    else cb(new Error('Только JPEG или PNG!'), false);
   },
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
+
 
 // 👉 Маршруты для фото (глобально, только админы)
 app.get('/api/photos', cors(), requireAdmin, (req, res) => {
@@ -141,9 +140,9 @@ app.post('/api/upload-photos', requireAdmin, uploadPhotos.array('photos', 5), (r
     
     db.query(query, params, (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true, photos: photoPaths });
+        console.log('Фото загружены:', photoPaths.map(p => `fs.existsSync(${p}) = ${fs.existsSync(p)}`));
+        res.json({ success: true, photos: photoPaths });
     });
-  });
 });
 
 app.delete('/api/delete-photo/:photoId', requireAdmin, (req, res) => {
