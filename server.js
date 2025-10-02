@@ -18,7 +18,6 @@ app.use(express.json());
 // 👉 Фикс CORS: Multiple origins + preflight
 app.use(cors({
   origin: [
-    'http://localhost:3000',      // Dev frontend
     'https://frutti.vercel.app'   // Prod frontend
   ],
   credentials: true,
