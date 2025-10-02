@@ -1,41 +1,33 @@
-{
-  "name": "frutti-backend",
-  "version": "1.0.0",
-  "lockfileVersion": 3,
-  "requires": true,
-  "packages": {
-    "": {
-      "name": "frutti-backend",
-      "version": "1.0.0",
-      "license": "ISC",
-      "dependencies": {
-        "bcrypt": "^5.1.0",
-        "cors": "^2.8.5",
-        "dotenv": "^17.2.0",
-        "express": "^4.21.2",
-        "pg": "^8.16.3",
-        "postgres": "^3.4.7"
-      }
+  {
+    "name": "frutti-backend",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "server.js",
+    "scripts": {
+      "start": "node server.js",
+      "dev": "nodemon server.js"
     },
-    "node_modules/@mapbox/node-pre-gyp": {
-      "version": "1.0.11",
-      "resolved": "https://registry.npmjs.org/@mapbox/node-pre-gyp/-/node-pre-gyp-1.0.11.tgz",
-      "integrity": "sha512-Yhlar6v9WQgUp/He7BdgzOz8lqMQ8sU+jkCq7Wx8Myc5YFJLbEe7lgui/V7G1qB1DJykHSGwreceSaD60Y0PUQ==",
-      "dependencies": {
-        "detect-libc": "^2.0.0",
-        "https-proxy-agent": "^5.0.0",
-        "make-dir": "^3.1.0",
-        "node-fetch": "^2.6.7",
-        "nopt": "^5.0.0",
-        "npmlog": "^5.0.1",
-        "rimraf": "^3.0.2",
-        "semver": "^7.3.5",
-        "tar": "^6.1.11"
-      },
-      "bin": {
-        "node-pre-gyp": "bin/node-pre-gyp"
-      }
+    "license": "ISC",
+    "dependencies": {
+      "bcrypt": "^5.1.0",
+      "cors": "^2.8.5",
+      "dotenv": "^17.2.0",
+      "express": "^4.21.2",
+      "multer": "^1.4.5-lts.1",
+      "pg": "^8.16.3",
+      "xlsx": "^0.18.5"
     },
+    "devDependencies": {
+      "nodemon": "^3.0.1"
+    },
+    "overrides": {
+      "bcrypt": {
+        "@mapbox/node-pre-gyp": {
+          "ignore": true
+        }
+      }
+    }
+  },
     "node_modules/abbrev": {
       "version": "1.1.1",
       "resolved": "https://registry.npmjs.org/abbrev/-/abbrev-1.1.1.tgz",
