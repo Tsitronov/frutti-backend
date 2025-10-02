@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import bcrypt from "bcrypt";
-import pkg from "pg";
+import { Pool } from "pg";
 import multer from "multer";
 import XLSX from "xlsx";
 import fs from "fs";
@@ -9,38 +9,39 @@ import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
-const { Pool } = pkg;
 
 const app = express();
-
+const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
 
+// 👉 Фикс CORS: Multiple origins + preflight
 app.use(cors({
   origin: [
-    process.env.NODE_ENV === 'production' 
-      ? 'https://frutti.vercel.app'  // Prod Vercel
-      : 'http://localhost:3000'      // Dev localhost
+    'http://localhost:3000',  // Dev frontend
+    'https://frutti.vercel.app'  // Prod frontend
   ],
-  credentials: true,  // Если auth/cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  // Для /upload POST
-  allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']  // Твои headers
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']
 }));
 
+// 👉 Preflight OPTIONS для всех путей
+app.options('*', cors());
 
+// 👉 Error handler (лог + ответ)
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Error:', err.stack);
   res.status(500).json({ error: 'Something broke!' });
 });
 
-
-// 👉 КРИТИЧНО: Для отдачи фото (иначе 404 на файлы!)
+// 👉 Static uploads
 app.use('/uploads', express.static('uploads'));
 
-// 🔌 Подключение к PostgreSQL (Render)
+// 🔌 PG Pool (SSL fix)
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } 
+  ssl: { rejectUnauthorized: false }  // Всегда для Render
 });
 
 // Проверка подключения и создание таблиц
