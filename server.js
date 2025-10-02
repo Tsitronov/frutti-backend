@@ -28,13 +28,18 @@ app.use(cors({
 app.options('*', cors());
 
 // 👉 Error handler (лог + ответ)
-app.use((err, req, res, next) => {
-  console.error('Error:', err.stack);
-  res.status(500).json({ error: 'Something broke!' });
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*'); // Или конкретно 'https://frutti.vercel.app' для prod
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
 });
 
-// 👉 Static uploads
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static('uploads')); 
 
 // 🔌 PG Pool (SSL fix)
 const db = new Pool({
