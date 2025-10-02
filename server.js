@@ -111,7 +111,7 @@ const uploadPhotos = multer({
 });
 
 // 👉 Маршруты для фото (глобально, только админы)
-app.get('/api/photos', requireAdmin, (req, res) => {
+app.get('/api/photos', cors(), requireAdmin, (req, res) => {
   console.log('GET /api/photos вызван с header:', req.headers['user-categoria']); // 👉 Дебаг
   db.query('SELECT id, path FROM photos ORDER BY createdAt DESC', (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
