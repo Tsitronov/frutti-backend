@@ -1,4 +1,4 @@
-import express from "express";
+imimport express from "express";
 import cors from "cors";
 import bcrypt from "bcrypt";
 import { Pool } from "pg";
@@ -162,51 +162,6 @@ app.delete('/api/delete-photo/:photoId', requireAdmin, (req, res) => {
   });
 });
 
-// Маршрут для загрузки и парсинга Excel + сохранение в БД
-app.post('/upload', upload.single('excelFile'), (req, res) => {
-  console.log('POST /upload вызван');
-  if (!req.file) {
-    return res.status(400).json({ error: 'Файл не выбран' });
-  }
-
-  try {
-    // Парсим Excel из буфера
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0]; // Первый лист
-    const worksheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(worksheet); // В JSON-массив объектов
-
-    if (data.length === 0) {
-      return res.status(400).json({ error: 'Файл пустой или без данных' });
-    }
-
-    // ФИКС: Правильно строкафицируем перед вставкой
-    const jsonData = JSON.stringify(data);
-    console.log('Данные для БД (первые 2 ряда):', data.slice(0, 2)); // Для дебага, без [object Object]
-
-    // Удаляем старые данные перед вставкой
-    db.query('DELETE FROM excel_data', (deleteErr) => {
-      if (deleteErr) {
-        console.error('Ошибка удаления старых данных:', deleteErr);
-        return res.status(500).json({ error: 'Ошибка удаления: ' + deleteErr.message });
-      }
-
-      // Сохраняем новые данные в БД
-      const query = 'INSERT INTO excel_data (data) VALUES ($1)';
-      db.query(query, [jsonData], (insertErr, result) => {
-        if (insertErr) {
-          console.error('Ошибка сохранения в БД:', insertErr);
-          return res.status(500).json({ error: 'Ошибка сохранения: ' + insertErr.message });
-        }
-        console.log('Старые данные удалены. Новые сохранены! ID записи:', result.rows[0].id);
-        res.json({ success: true, data }); // Отправляем данные клиенту (не JSON-строку)
-      });
-    });
-  } catch (error) {
-    console.error('Ошибка парсинга:', error);
-    res.status(500).json({ error: 'Ошибка обработки файла: ' + error.message });
-  }
-});
 
 // Маршрут: GET для загрузки последних данных из БД
 app.get('/data', (req, res) => {
