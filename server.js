@@ -1,4 +1,4 @@
-imimport express from "express";
+import express from "express";
 import cors from "cors";
 import bcrypt from "bcrypt";
 import { Pool } from "pg";
