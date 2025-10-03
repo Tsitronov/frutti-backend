@@ -4,15 +4,11 @@ import bcrypt from "bcrypt";
 import { Pool } from "pg";
 import multer from "multer";
 import XLSX from "xlsx";
-import fs from "fs/promises";
-import { fileURLToPath } from 'url';
+import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -38,21 +34,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something broke!' });
 });
 
-
-// Папка для фото
-const uploadDir = path.join(__dirname, "uploads");
-app.use("/uploads", express.static(uploadDir));
-
-// Multer
-const photoStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
-});
-const photoUpload = multer({ storage: photoStorage });
-const excelUpload = multer({ storage: multer.memoryStorage() });
-
-
-
+// 👉 КРИТИЧНО: Для отдачи фото (иначе 404 на файлы!)
+app.use('/uploads', express.static('uploads'));
 
 // 🔌 PG Pool (SSL fix)
 const db = new Pool({
@@ -108,72 +91,79 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-// 🚀 Загрузка фото
-app.post("/api/upload-photos", photoUpload.array("photos", 5), async (req, res) => {
-  try {
-    const files = req.files.map(f => f.filename);
-    const saved = [];
-
-    for (let file of files) {
-      const result = await db.query(
-        "INSERT INTO photos (path) VALUES ($1) RETURNING id, path",
-        [file]
-      );
-      saved.push(result.rows[0]);
+// 👉 Multer для фото (diskStorage)
+const uploadPhotos = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = 'uploads/';
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const filename = uniqueSuffix + path.extname(file.originalname);
+      cb(null, filename);
     }
-
-    res.json({ photos: saved });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Ошибка при загрузке" });
-  }
+  }),
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') cb(null, true);
+    else cb(new Error('Только JPEG или PNG!'), false);
+  },
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// 📥 Получение всех фото
-app.get("/api/photos", async (req, res) => {
-  try {
-    const result = await db.query("SELECT id, path FROM photos ORDER BY id ASC");
-    res.json({ photos: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Ошибка при получении фото" });
-  }
+// 👉 Маршруты для фото (глобально, только админы)
+app.get('/api/photos', requireAdmin, (req, res) => {
+  console.log('GET /api/photos вызван с header:', req.headers['user-categoria']); // 👉 Дебаг
+  db.query('SELECT id, path FROM photos ORDER BY createdAt DESC', (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ photos: results.rows });
+  });
 });
 
-// ❌ Удаление фото
-app.delete("/api/delete-photo/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await db.query("SELECT path FROM photos WHERE id = $1", [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Фото не найдено" });
+app.post('/api/upload-photos', requireAdmin, uploadPhotos.array('photos', 5), (req, res) => {
+  console.log('POST /api/upload-photos вызван'); // 👉 Дебаг
+  db.query('SELECT COUNT(*) FROM photos', (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const currentCount = parseInt(results.rows[0].count);
+    if (currentCount + req.files.length > 5) {
+      return res.status(400).json({ error: 'Максимум 5 фото в системе' });
     }
 
-    const fileName = result.rows[0].path;
-    const filePath = path.join(uploadDir, fileName);
-
-    await db.query("DELETE FROM photos WHERE id = $1", [id]);
-
-    try {
-      await fs.unlink(filePath);
-    } catch (err) {
-      console.warn("⚠ Не удалось удалить файл:", filePath);
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Ошибка при удалении" });
-  }
+    const photoPaths = req.files.map(file => file.path);
+    // 👉 Для multiple insert в pg: VALUES ($1), ($2), ...
+    const values = photoPaths.map((p, index) => `($${index + 1})`).join(', ');
+    const query = `INSERT INTO photos (path) VALUES ${values} RETURNING *`;
+    const params = photoPaths;
+    
+    db.query(query, params, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      console.log('Фото загружены:', photoPaths.map(p => `fs.existsSync(${p}) = ${fs.existsSync(p)}`));
+      res.json({ success: true, photos: photoPaths });
+    });
 });
 
-
+app.delete('/api/delete-photo/:photoId', requireAdmin, (req, res) => {
+  console.log('DELETE /api/delete-photo вызван'); // 👉 Дебаг
+  const { photoId } = req.params;
+  db.query('SELECT path FROM photos WHERE id = $1', [photoId], (err, results) => {
+    if (err || results.rows.length === 0) return res.status(404).json({ error: 'Фото не найдено' });
+    
+    const filePath = results.rows[0].path;
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Ошибка удаления файла:', err);
+    });
+    
+    db.query('DELETE FROM photos WHERE id = $1', [photoId], (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    });
+  });
+});
 
 // Маршрут для загрузки и парсинга Excel + сохранение в БД
 app.post('/upload', upload.single('excelFile'), (req, res) => {
   console.log('POST /upload вызван');
-
   if (!req.file) {
     return res.status(400).json({ error: 'Файл не выбран' });
   }
@@ -189,11 +179,9 @@ app.post('/upload', upload.single('excelFile'), (req, res) => {
       return res.status(400).json({ error: 'Файл пустой или без данных' });
     }
 
+    // ФИКС: Правильно строкафицируем перед вставкой
     const jsonData = JSON.stringify(data);
-    console.log(
-      'Данные для БД (первые 2 ряда):',
-      data.slice(0, 2)
-    );
+    console.log('Данные для БД (первые 2 ряда):', data.slice(0, 2)); // Для дебага, без [object Object]
 
     // Удаляем старые данные перед вставкой
     db.query('DELETE FROM excel_data', (deleteErr) => {
@@ -203,25 +191,18 @@ app.post('/upload', upload.single('excelFile'), (req, res) => {
       }
 
       // Сохраняем новые данные в БД
-      const query = 'INSERT INTO excel_data (data) VALUES ($1) RETURNING id';
+      const query = 'INSERT INTO excel_data (data) VALUES ($1)';
       db.query(query, [jsonData], (insertErr, result) => {
         if (insertErr) {
           console.error('Ошибка сохранения в БД:', insertErr);
           return res.status(500).json({ error: 'Ошибка сохранения: ' + insertErr.message });
         }
-
-        const newId = result.rows[0].id;
-        console.log('Старые данные удалены. Новые сохранены! ID записи:', newId);
-
-        res.json({
-          success: true,
-          id: newId,
-          data // возвращаем клиенту данные в JSON, а не строку
-        });
+        console.log('Старые данные удалены. Новые сохранены! ID записи:', result.rows[0].id);
+        res.json({ success: true, data }); // Отправляем данные клиенту (не JSON-строку)
       });
     });
   } catch (error) {
-    console.error('Ошибка парсинга Excel:', error);
+    console.error('Ошибка парсинга:', error);
     res.status(500).json({ error: 'Ошибка обработки файла: ' + error.message });
   }
 });
@@ -229,62 +210,42 @@ app.post('/upload', upload.single('excelFile'), (req, res) => {
 // Маршрут: GET для загрузки последних данных из БД
 app.get('/data', (req, res) => {
   console.log('GET /data вызван');
-
   const query = 'SELECT data FROM excel_data ORDER BY uploaded_at DESC LIMIT 1';
-
   db.query(query, (err, results) => {
     if (err) {
       console.error('Ошибка чтения из БД:', err);
       return res.status(500).json({ error: 'Ошибка чтения: ' + err.message });
     }
-
     if (results.rows.length === 0) {
       console.log('БД пуста — возвращаем []');
       return res.json({ success: false, data: [] });
     }
 
     const rawData = results.rows[0].data;
-    console.log(
-      'Сырые данные из БД (тип = %s): %s',
-      typeof rawData,
-      typeof rawData === 'string'
-        ? rawData.substring(0, 100)
-        : JSON.stringify(rawData).substring(0, 100)
-    );
+    console.log('Сырые данные из БД (первые 100 символов):', typeof rawData === 'string' ? rawData.substring(0, 100) : JSON.stringify(rawData).substring(0, 100)); // Дебаг-лог
 
     try {
       let parsedData;
-
-      if (Array.isArray(rawData)) {
-        // pg сам распарсил JSONB → это массив
+      if (typeof rawData === 'object' && rawData !== null) {
+        // Если pg уже распарсил (JSONB-тип) — используем как есть
         parsedData = rawData;
-      } else if (typeof rawData === 'object' && rawData !== null) {
-        // pg сам распарсил JSONB → это объект (редкий кейс)
-        parsedData = [rawData];
       } else if (typeof rawData === 'string') {
-        // Если строка — пробуем парсить
+        // Если строка — парсим
         parsedData = JSON.parse(rawData);
-
-        if (!Array.isArray(parsedData)) {
-          console.warn('⚠️ JSON из строки не массив, оборачиваем в []');
-          parsedData = [parsedData];
-        }
       } else {
-        console.warn('⚠️ Неизвестный тип данных:', typeof rawData);
-        parsedData = [];
+        throw new Error('Неизвестный тип данных в БД: ' + typeof rawData);
+      }
+
+      // Проверяем, что parsedData — массив
+      if (!Array.isArray(parsedData)) {
+        throw new Error('Данные не массив: ' + typeof parsedData);
       }
 
       console.log('Парсинг успешен! Кол-во строк:', parsedData.length);
       res.json({ success: true, data: parsedData });
-
     } catch (parseErr) {
       console.error('Ошибка парсинга JSON из БД:', parseErr);
-      res.status(500).json({
-        error:
-          'Ошибка парсинга данных: ' +
-          parseErr.message +
-          '. Очисти таблицу: DELETE FROM excel_data;'
-      });
+      res.status(500).json({ error: 'Ошибка парсинга данных: ' + parseErr.message + '. Очисти таблицу: DELETE FROM excel_data;' });
     }
   });
 });
