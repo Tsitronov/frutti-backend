@@ -28,13 +28,18 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']
 }));
+
 app.options('*', cors());
 
 // Error handler
-app.use((err, req, res, next) => {
-  console.error('Error:', err.stack);
-  res.status(500).json({ error: 'Something broke!' });
+app.use((req, res, next) => {
+  if (req.path.startsWith('/uploads')) {
+    res.header('Access-Control-Allow-Origin', '*'); // Для img src
+    res.header('Access-Control-Allow-Methods', 'GET');
+  }
+  next();
 });
+
 
 // Папка для фото
 const uploadDir = path.join(__dirname, "uploads");
