@@ -45,7 +45,29 @@ const photoStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
 });
-const photoUpload = multer({ storage: photoStorage });
+
+const uploadPhotos = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = 'uploads/';
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      // 👉 Sanitize: Убери спецсимволы/кириллицу, используй random + ext
+      const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '').substring(0, 50);
+      const filename = uniqueSuffix + (sanitizedName ? '-' + sanitizedName : '') + path.extname(file.originalname);
+      cb(null, filename);
+    }
+  }),
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') cb(null, true);
+    else cb(new Error('Только JPEG или PNG!'), false);
+  },
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+
 const excelUpload = multer({ storage: multer.memoryStorage() });
 
 // PostgreSQL
@@ -98,8 +120,8 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-app.post('/api/upload-photos', requireAdmin, photoUpload.array('photos', 5), (req, res) => {
-  console.log('POST /api/upload-photos вызван, files:', req.files?.length || 0); // Лог files
+app.post('/api/upload-photos', requireAdmin, uploadPhotos.array('photos', 5), (req, res) => {
+  console.log('POST /api/upload-photos вызван, files:', req.files?.length || 0); // 👉 Лог files
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'Нет файлов для загрузки' });
   }
@@ -115,7 +137,7 @@ app.post('/api/upload-photos', requireAdmin, photoUpload.array('photos', 5), (re
     }
 
     const photoPaths = req.files.map(file => file.path);
-    // 👉 Single insert loop (без multiple для pg safety)
+    // 👉 Single insert loop (без multiple для pg safety, чтобы избежать syntax error)
     const savedPhotos = [];
     let insertError = null;
     photoPaths.forEach((path, index) => {
@@ -132,6 +154,7 @@ app.post('/api/upload-photos', requireAdmin, photoUpload.array('photos', 5), (re
             res.status(500).json({ error: insertError.message });
           } else {
             console.log('Все фото загружены:', savedPhotos.length);
+            console.log('Файлы существуют:', photoPaths.map(p => fs.existsSync(p))); // Лог FS
             res.json({ success: true, photos: savedPhotos });
           }
         }
@@ -139,7 +162,6 @@ app.post('/api/upload-photos', requireAdmin, photoUpload.array('photos', 5), (re
     });
   });
 });
-
 
 // 📥 Получение всех фото
 app.get("/api/photos", async (req, res) => {
@@ -153,31 +175,35 @@ app.get("/api/photos", async (req, res) => {
 });
 
 // ❌ Удаление фото
-app.delete("/api/delete-photo/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await db.query("SELECT path FROM photos WHERE id = $1", [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Фото не найдено" });
+app.delete('/api/delete-photo/:photoId', requireAdmin, (req, res) => {
+  console.log('DELETE /api/delete-photo вызван'); // 👉 Дебаг
+  const { photoId } = req.params;
+  db.query('SELECT path FROM photos WHERE id = $1', [photoId], (err, results) => {
+    if (err) {
+      console.error('Select path error:', err);
+      return res.status(500).json({ error: err.message });
     }
-
-    const fileName = result.rows[0].path;
-    const filePath = path.join(uploadDir, fileName);
-
-    await db.query("DELETE FROM photos WHERE id = $1", [id]);
-
-    try {
-      await fs.unlink(filePath);
-    } catch (err) {
-      console.warn("⚠ Не удалось удалить файл:", filePath);
+    if (results.rows.length === 0) return res.status(404).json({ error: 'Фото не найдено' });
+    
+    const filePath = results.rows[0].path;
+    console.log('Delete file:', filePath, 'exists:', fs.existsSync(filePath)); // 👉 Лог FS
+    if (fs.existsSync(filePath)) {
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Unlink error:', err);
+        else console.log('Файл удалён:', filePath);
+      });
+    } else {
+      console.warn('File not found for delete:', filePath); // Предупреждение
     }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Ошибка при удалении" });
-  }
+    
+    db.query('DELETE FROM photos WHERE id = $1', [photoId], (err) => {
+      if (err) {
+        console.error('Delete DB error:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ success: true });
+    });
+  });
 });
 
 // Маршрут для загрузки и парсинга Excel + сохранение в БД
