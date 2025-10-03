@@ -20,7 +20,10 @@ app.use(express.json());
 
 // CORS
 app.use(cors({
-  origin: ['https://frutti.vercel.app'],
+  origin: [
+    'http://localhost:3000',      // Dev
+    'https://frutti.vercel.app'   // Prod
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']
@@ -96,14 +99,14 @@ const requireAdmin = (req, res, next) => {
 };
 
 app.post('/api/upload-photos', requireAdmin, photoUpload.array('photos', 5), (req, res) => {
-  console.log('POST /api/upload-photos вызван, files:', req.files?.length || 0); // 👉 Добавил лог files
+  console.log('POST /api/upload-photos вызван, files:', req.files?.length || 0); // Лог files
   if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ error: 'Нет файлов для загрузки' }); // 👉 Добавил check
+    return res.status(400).json({ error: 'Нет файлов для загрузки' });
   }
 
   db.query('SELECT COUNT(*) FROM photos', (err, results) => {
     if (err) {
-      console.error('Count query error:', err); // 👉 Добавил лог
+      console.error('Count query error:', err);
       return res.status(500).json({ error: err.message });
     }
     const currentCount = parseInt(results.rows[0].count);
@@ -112,18 +115,27 @@ app.post('/api/upload-photos', requireAdmin, photoUpload.array('photos', 5), (re
     }
 
     const photoPaths = req.files.map(file => file.path);
-    // 👉 Для multiple insert в pg: VALUES ($1), ($2), ...
-    const values = photoPaths.map((p, index) => `($${index + 1})`).join(', ');
-    const query = `INSERT INTO photos (path) VALUES ${values} RETURNING *`;
-    const params = photoPaths;
-    
-    db.query(query, params, (err, result) => {
-      if (err) {
-        console.error('Insert query error:', err); // 👉 Добавил лог
-        return res.status(500).json({ error: err.message });
-      }
-      console.log('Фото загружены:', photoPaths.map(p => `fs.existsSync(${p}) = ${fs.existsSync(p)}`));
-      res.json({ success: true, photos: photoPaths });
+    // 👉 Single insert loop (без multiple для pg safety)
+    const savedPhotos = [];
+    let insertError = null;
+    photoPaths.forEach((path, index) => {
+      db.query('INSERT INTO photos (path) VALUES ($1) RETURNING id, path', [path], (err, result) => {
+        if (err) {
+          console.error('Insert photo error:', err);
+          insertError = err;
+        } else {
+          savedPhotos.push(result.rows[0]);
+        }
+        // 👉 Если последний файл
+        if (index === photoPaths.length - 1) {
+          if (insertError) {
+            res.status(500).json({ error: insertError.message });
+          } else {
+            console.log('Все фото загружены:', savedPhotos.length);
+            res.json({ success: true, photos: savedPhotos });
+          }
+        }
+      });
     });
   });
 });
