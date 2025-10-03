@@ -95,26 +95,39 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-// 🚀 Загрузка фото
-app.post("/api/upload-photos", photoUpload.array("photos", 5), async (req, res) => {
-  try {
-    const files = req.files.map(f => f.filename);
-    const saved = [];
+app.post('/api/upload-photos', requireAdmin, uploadPhotos.array('photos', 5), (req, res) => {
+  console.log('POST /api/upload-photos вызван, files:', req.files?.length || 0); // 👉 Добавил лог files
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: 'Нет файлов для загрузки' }); // 👉 Добавил check
+  }
 
-    for (let file of files) {
-      const result = await db.query(
-        "INSERT INTO photos (path) VALUES ($1) RETURNING id, path",
-        [file]
-      );
-      saved.push(result.rows[0]);
+  db.query('SELECT COUNT(*) FROM photos', (err, results) => {
+    if (err) {
+      console.error('Count query error:', err); // 👉 Добавил лог
+      return res.status(500).json({ error: err.message });
+    }
+    const currentCount = parseInt(results.rows[0].count);
+    if (currentCount + req.files.length > 5) {
+      return res.status(400).json({ error: 'Максимум 5 фото в системе' });
     }
 
-    res.json({ photos: saved });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Ошибка при загрузке" });
-  }
+    const photoPaths = req.files.map(file => file.path);
+    // 👉 Для multiple insert в pg: VALUES ($1), ($2), ...
+    const values = photoPaths.map((p, index) => `($${index + 1})`).join(', ');
+    const query = `INSERT INTO photos (path) VALUES ${values} RETURNING *`;
+    const params = photoPaths;
+    
+    db.query(query, params, (err, result) => {
+      if (err) {
+        console.error('Insert query error:', err); // 👉 Добавил лог
+        return res.status(500).json({ error: err.message });
+      }
+      console.log('Фото загружены:', photoPaths.map(p => `fs.existsSync(${p}) = ${fs.existsSync(p)}`));
+      res.json({ success: true, photos: photoPaths });
+    });
+  });
 });
+
 
 // 📥 Получение всех фото
 app.get("/api/photos", async (req, res) => {
@@ -641,6 +654,7 @@ app.put("/api/utenti/:id", async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ error: "Utente non trovato" });
     res.json(result.rows[0]);
   } catch (err) {
+    console.error('Update utenti error:', err); // 👉 Добавил лог
     res.status(500).json({ error: "Errore aggiornamento utenti" });
   }
 });
@@ -654,6 +668,7 @@ app.delete("/api/utenti/:id", async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ error: "Utente non trovato" });
     res.json({ success: true });
   } catch (err) {
+    console.error('Delete utenti error:', err); // 👉 Добавил лог
     res.status(500).json({ error: "Errore cancellazione utenti" });
   }
 });
@@ -708,6 +723,7 @@ app.delete("/api/frutti/:id", async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ error: "Frutto non trovato" });
     res.json({ success: true });
   } catch (err) {
+    console.error('Delete frutti error:', err); // 👉 Добавил лог
     res.status(500).json({ error: "Errore cancellazione frutti" });
   }
 });
@@ -758,13 +774,13 @@ app.delete("/api/appunti/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const result = await db.query("DELETE FROM appunti WHERE id=$1", [id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: "Frutto non trovato" });
+    if (result.rowCount === 0) return res.status(404).json({ error: "Appunto non trovato" });
     res.json({ success: true });
   } catch (err) {
+    console.error('Delete appunti error:', err); // 👉 Добавил лог
     res.status(500).json({ error: "Errore cancellazione appunti" });
   }
 });
-
 
 
 // ====================== SERVER ======================
