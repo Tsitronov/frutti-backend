@@ -4,55 +4,63 @@ import bcrypt from "bcrypt";
 import { Pool } from "pg";
 import multer from "multer";
 import XLSX from "xlsx";
-import fs from "fs";
+import fs from "fs/promises"; // Используем промисы для await
+import { fileURLToPath } from 'url';
 import path from "path";
 import dotenv from "dotenv";
+import { fileURLToPath } from "url";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
 
-// 👉 Фикс CORS: Multiple origins + preflight
+// CORS
 app.use(cors({
-  origin: [
-    'http://localhost:3000',      // Dev frontend
-    'https://frutti.vercel.app'   // Prod frontend
-  ],
+  origin: ['https://frutti.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']
 }));
-
-// 👉 Preflight OPTIONS для всех путей
 app.options('*', cors());
 
-// 👉 Error handler (лог + ответ)
+// Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err.stack);
   res.status(500).json({ error: 'Something broke!' });
 });
 
-// 👉 КРИТИЧНО: Для отдачи фото (иначе 404 на файлы!)
-app.use('/uploads', express.static('uploads'));
+// Папка для фото
+const uploadDir = path.join(__dirname, "uploads");
+app.use("/uploads", express.static(uploadDir));
 
-// 🔌 PG Pool (SSL fix)
+// Multer
+const photoStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
+});
+const photoUpload = multer({ storage: photoStorage });
+const excelUpload = multer({ storage: multer.memoryStorage() });
+
+// PostgreSQL
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }  // Всегда для Render
+  ssl: { rejectUnauthorized: false }
 });
 
 // Проверка подключения и создание таблиц
 db.connect((err, client, release) => {
   if (err) {
     console.error('PG connect error:', err.message);
-    return; // Не throw, чтобы сервер стартовал
+    return;
   }
   console.log("PostgreSQL подключён");
 
-  // 👉 Создание таблицы если не существует
   const createExcelTable = `
     CREATE TABLE IF NOT EXISTS excel_data (
       id SERIAL PRIMARY KEY,
@@ -77,13 +85,10 @@ db.connect((err, client, release) => {
     console.log("Таблица 'photos' готова (глобально) ✅");
   });
 
-  release(); // Закрываем соединение
+  release();
 });
 
-// Multer: загружаем файл в память (для Excel)
-const upload = multer({ storage: multer.memoryStorage() });
-
-// 👉 Middleware для проверки админа (из headers)
+// Middleware проверки админа
 const requireAdmin = (req, res, next) => {
   const userCategoria = req.headers['user-categoria'];
   if (userCategoria !== '3') {
@@ -92,80 +97,113 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-// 👉 Multer для фото (diskStorage)
-const uploadPhotos = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const uploadDir = 'uploads/';
-      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-      cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      const filename = uniqueSuffix + path.extname(file.originalname);
-      cb(null, filename);
-    }
-  }),
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') cb(null, true);
-    else cb(new Error('Только JPEG или PNG!'), false);
-  },
-  limits: { fileSize: 5 * 1024 * 1024 }
-});
+// 🚀 Загрузка фото
+app.post("/api/upload-photos", photoUpload.array("photos", 5), async (req, res) => {
+  try {
+    const files = req.files.map(f => f.filename);
+    const saved = [];
 
-// 👉 Маршруты для фото (глобально, только админы)
-app.get('/api/photos', requireAdmin, (req, res) => {
-  console.log('GET /api/photos вызван с header:', req.headers['user-categoria']); // 👉 Дебаг
-  db.query('SELECT id, path FROM photos ORDER BY createdAt DESC', (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ photos: results.rows });
-  });
-});
-
-app.post('/api/upload-photos', requireAdmin, uploadPhotos.array('photos', 5), (req, res) => {
-  console.log('POST /api/upload-photos вызван'); // 👉 Дебаг
-  db.query('SELECT COUNT(*) FROM photos', (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    const currentCount = parseInt(results.rows[0].count);
-    if (currentCount + req.files.length > 5) {
-      return res.status(400).json({ error: 'Максимум 5 фото в системе' });
+    for (let file of files) {
+      const result = await db.query(
+        "INSERT INTO photos (path) VALUES ($1) RETURNING id, path",
+        [file]
+      );
+      saved.push(result.rows[0]);
     }
 
-    const photoPaths = req.files.map(file => file.path);
-    // 👉 Для multiple insert в pg: VALUES ($1), ($2), ...
-    const values = photoPaths.map((p, index) => `($${index + 1})`).join(', ');
-    const query = `INSERT INTO photos (path) VALUES ${values} RETURNING *`;
-    const params = photoPaths;
-    
-    db.query(query, params, (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      console.log('Фото загружены:', photoPaths.map(p => `fs.existsSync(${p}) = ${fs.existsSync(p)}`));
-      res.json({ success: true, photos: photoPaths });
-    });
+    res.json({ photos: saved });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка при загрузке" });
+  }
 });
 
-app.delete('/api/delete-photo/:photoId', requireAdmin, (req, res) => {
-  console.log('DELETE /api/delete-photo вызван'); // 👉 Дебаг
-  const { photoId } = req.params;
-  db.query('SELECT path FROM photos WHERE id = $1', [photoId], (err, results) => {
-    if (err || results.rows.length === 0) return res.status(404).json({ error: 'Фото не найдено' });
-    
-    const filePath = results.rows[0].path;
-    fs.unlink(filePath, (err) => {
-      if (err) console.error('Ошибка удаления файла:', err);
-    });
-    
-    db.query('DELETE FROM photos WHERE id = $1', [photoId], (err) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true });
-    });
-  });
+// 📥 Получение всех фото
+app.get("/api/photos", async (req, res) => {
+  try {
+    const result = await db.query("SELECT id, path FROM photos ORDER BY id ASC");
+    res.json({ photos: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка при получении фото" });
+  }
 });
 
+// ❌ Удаление фото
+app.delete("/api/delete-photo/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query("SELECT path FROM photos WHERE id = $1", [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Фото не найдено" });
+    }
+
+    const fileName = result.rows[0].path;
+    const filePath = path.join(uploadDir, fileName);
+
+    await db.query("DELETE FROM photos WHERE id = $1", [id]);
+
+    try {
+      await fs.unlink(filePath);
+    } catch (err) {
+      console.warn("⚠ Не удалось удалить файл:", filePath);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка при удалении" });
+  }
+});
+
+// Маршрут для загрузки и парсинга Excel + сохранение в БД
+app.post('/upload', upload.single('excelFile'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Файл не выбран' });
+  }
+
+  try {
+    // Парсим Excel из буфера
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0]; // Первый лист
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet); // В JSON-массив объектов
+
+    if (data.length === 0) {
+      return res.status(400).json({ error: 'Файл пустой или без данных' });
+    }
+
+    // ФИКС: Правильно строкафицируем перед вставкой
+    const jsonData = JSON.stringify(data);
+    console.log('Данные для БД (первые 2 ряда):', data.slice(0, 2)); // Для дебага, без [object Object]
+
+    // Удаляем старые данные перед вставкой
+    db.query('DELETE FROM excel_data', (deleteErr) => {
+      if (deleteErr) {
+        console.error('Ошибка удаления старых данных:', deleteErr);
+        return res.status(500).json({ error: 'Ошибка удаления: ' + deleteErr.message });
+      }
+
+      // Сохраняем новые данные в БД
+      const query = 'INSERT INTO excel_data (data) VALUES ($1)';
+      db.query(query, [jsonData], (insertErr, result) => {
+        if (insertErr) {
+          console.error('Ошибка сохранения в БД:', insertErr);
+          return res.status(500).json({ error: 'Ошибка сохранения: ' + insertErr.message });
+        }
+        console.log('Старые данные удалены. Новые сохранены! ID записи:', result.rows[0].id);
+        res.json({ success: true, data }); // Отправляем данные клиенту (не JSON-строку)
+      });
+    });
+  } catch (error) {
+    console.error('Ошибка парсинга:', error);
+    res.status(500).json({ error: 'Ошибка обработки файла: ' + error.message });
+  }
+});
 
 // Маршрут: GET для загрузки последних данных из БД
 app.get('/data', (req, res) => {
-  console.log('GET /data вызван');
   const query = 'SELECT data FROM excel_data ORDER BY uploaded_at DESC LIMIT 1';
   db.query(query, (err, results) => {
     if (err) {
@@ -206,7 +244,286 @@ app.get('/data', (req, res) => {
   });
 });
 
+// ====================== DEMO DATA ======================
+async function inserisciDemoDati() {
+  try {
+    // Admin demo
+    const adminCheck = await db.query("SELECT * FROM passwordDemo");
+    if (adminCheck.rows.length === 0) {
+      const hashedPassword = await bcrypt.hash("22121971Ts+", 10);
+      await db.query(
+        "INSERT INTO passwordDemo (username, password, categoria) VALUES ($1,$2,$3)",
+        ["evgenii", hashedPassword, "3"]
+      );
+      console.log("✅ Admin demo inserito");
+    }
+
+    // Utenti demo
+    const utentiCheck = await db.query("SELECT * FROM utentiDemo");
+    if (utentiCheck.rows.length === 0) {
+      await db.query(`
+        INSERT INTO utentiDemo (reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro)
+        VALUES 
+        ('A', '101', 'Rossi', 'assistito', 'quotidiana', 'parziale', 'assistito', 'mista', 'occhiali', 'note generali'),
+        ('B', '202', 'Bianchi', 'autonomo', 'saltuario', 'completa', 'autonomo', 'vegetariana', 'dentiera', 'nessun problema');
+      `);
+      console.log("✅ Utenti demo inseriti");
+    }
+
+    // Frutti demo
+    const fruttiCheck = await db.query("SELECT * FROM fruttiDemo");
+    if (fruttiCheck.rows.length === 0) {
+      await db.query(`
+        INSERT INTO fruttiDemo (nome, descrizione, categoria)
+        VALUES 
+        ('Mela', 'Frutto rosso dolce', 'cibo'),
+        ('Banana', 'Frutto giallo ricco di potassio', 'cibo'),
+        ('Arancia', 'Frutto agrumato ricco di vitamina C', 'cibo');
+      `);
+      console.log("✅ Frutti demo inseriti");
+    }
+
+    // Appunti demo
+    const appuntiCheck = await db.query("SELECT * FROM appuntiDemo");
+    if (appuntiCheck.rows.length === 0) {
+      await db.query(`
+        INSERT INTO appuntiDemo (nome, categoria, descrizione)
+        VALUES 
+        ('Nota 1', 'lavoro', 'Preparare documenti per riunione'),
+        ('Nota 2', 'personale', 'Comprare frutta e verdura'),
+        ('Nota 3', 'studio', 'Ripassare capitolo 5 React');
+      `);
+      console.log("✅ Appunti demo inseriti");
+    }
+  } catch (err) {
+    console.error("❌ Errore inserimento dati demo:", err);
+  }
+}
+
+// ====================== LOGINDemo ======================
+app.post("/api/loginDemo", async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const result = await db.query("SELECT * FROM passwordDemo WHERE username = $1", [username]);
+    if (result.rows.length === 0) return res.status(401).json({ error: "Utente non trovato" });
+
+    const user = result.rows[0];
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(401).json({ error: "Password errata" });
+
+    res.json({
+      message: "Login riuscito",
+      categoria: String(user.categoria),
+    });
+  } catch (err) {
+    console.error("Errore login:", err);
+    res.status(500).json({ error: "Errore DB" });
+  }
+});
+
+// ====================== ADMIN ======================
+app.get("/api/adminDemo", async (req, res) => {
+  try {
+    const results = await db.query("SELECT id, username, categoria FROM passwordDemo");
+    res.json(results.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Errore lettura DB", details: err.message });
+  }
+});
+
+app.post("/api/adminDemo", async (req, res) => {
+  const { username, password, categoria } = req.body;
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await db.query(
+      "INSERT INTO passwordDemo (username, password, categoria) VALUES ($1, $2, $3) RETURNING *",
+      [username, hashedPassword, categoria]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore scrittura DB", details: err.message });
+  }
+});
+
+app.put("/api/adminDemo/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { username, categoria } = req.body;
+  try {
+    const result = await db.query(
+      "UPDATE passwordDemo SET username = $1, categoria = $2 WHERE id = $3 RETURNING *",
+      [username, categoria, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: "Elemento non trovato" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore aggiornamento", details: err.message });
+  }
+});
+
+app.delete("/api/adminDemo/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  try {
+    const result = await db.query("DELETE FROM passwordDemo WHERE id = $1 RETURNING *", [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "Elemento non trovato" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore cancellazione", details: err.message });
+  }
+});
+
+// ====================== UTENTI ======================
+app.get("/api/utentiDemo", async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM utentiDemo ORDER BY id ASC");
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Errore lettura utenti" });
+  }
+});
+
+app.post("/api/utentiDemo", async (req, res) => {
+  const { reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
+  try {
+    const result = await db.query(
+      `INSERT INTO utentiDemo (reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore scrittura utenti" });
+  }
+});
+
+app.put("/api/utentiDemo/:id", async (req, res) => {
+  const { id } = req.params;
+  const { reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
+  try {
+    const result = await db.query(
+      `UPDATE utentiDemo SET reparto=$1, stanza=$2, cognome=$3, bagno=$4, barba=$5, autonomia=$6, vestiti=$7,
+       alimentazione=$8, accessori=$9, altro=$10 WHERE id=$11 RETURNING *`,
+      [reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro, id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Utente non trovato" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore aggiornamento utenti" });
+  }
+});
+
+app.delete("/api/utentiDemo/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.query("DELETE FROM utentiDemo WHERE id=$1", [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Utente non trovato" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore cancellazione utenti" });
+  }
+});
+
+// ====================== FRUTTI ======================
+app.get("/api/fruttiDemo", async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM fruttiDemo ORDER BY id ASC");
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Errore lettura frutti" });
+  }
+});
+
+app.post("/api/fruttiDemo", async (req, res) => {
+  const { nome, descrizione, categoria } = req.body;
+  try {
+    const result = await db.query(
+      "INSERT INTO fruttiDemo (nome, descrizione, categoria) VALUES ($1,$2,$3) RETURNING *",
+      [nome, descrizione, categoria]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore scrittura frutti" });
+  }
+});
+
+app.put("/api/fruttiDemo/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nome, descrizione, categoria } = req.body;
+  try {
+    const result = await db.query(
+      "UPDATE fruttiDemo SET nome=$1, descrizione=$2, categoria=$3 WHERE id=$4 RETURNING *",
+      [nome, descrizione, categoria, id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Frutto non trovato" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore aggiornamento frutti" });
+  }
+});
+
+app.delete("/api/fruttiDemo/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.query("DELETE FROM fruttiDemo WHERE id=$1", [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Frutto non trovato" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore cancellazione frutti" });
+  }
+});
+
+// ====================== APPUNTI ======================
+app.get("/api/appuntiDemo", async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM appuntiDemo ORDER BY id ASC");
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Errore lettura appunti" });
+  }
+});
+
+app.post("/api/appuntiDemo", async (req, res) => {
+  const { nome, descrizione, categoria } = req.body;
+  try {
+    const result = await db.query(
+      "INSERT INTO appuntiDemo (nome, descrizione, categoria) VALUES ($1,$2,$3) RETURNING *",
+      [nome, descrizione, categoria]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore scrittura appunti" });
+  }
+});
+
+app.put("/api/appuntiDemo/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nome, descrizione, categoria } = req.body;
+  try {
+    const result = await db.query(
+      "UPDATE appuntiDemo SET nome=$1, descrizione=$2, categoria=$3 WHERE id=$4 RETURNING *",
+      [nome, descrizione, categoria, id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "Appunto non trovato" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Errore aggiornamento appunti" });
+  }
+});
+
+app.delete("/api/appuntiDemo/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.query("DELETE FROM appuntiDemo WHERE id=$1", [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Appunto non trovato" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore cancellazione appunti" });
+  }
+});
+
+
+
 // ====================== LOGIN ======================
+
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -228,7 +545,10 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+
 // ====================== ADMIN ======================
+
+// ✅ GET – tutti gli admin
 app.get('/api/admin', async (req, res) => {
   try {
     const results = await db.query('SELECT id, username, categoria FROM password');
@@ -237,6 +557,7 @@ app.get('/api/admin', async (req, res) => {
     res.status(500).json({ error: 'Errore lettura DB', details: err.message });
   }
 });
+
 
 app.post('/api/admin', async (req, res) => {
   const { username, password, categoria } = req.body;
@@ -252,6 +573,8 @@ app.post('/api/admin', async (req, res) => {
   }
 });
 
+
+// ✅ PUT – aggiorna admin
 app.put('/api/admin/:id', async (req, res) => {
   const id = parseInt(req.params.id);
   const { username, categoria } = req.body;
@@ -267,6 +590,8 @@ app.put('/api/admin/:id', async (req, res) => {
   }
 });
 
+
+// ✅ DELETE – elimina admin
 app.delete('/api/admin/:id', async (req, res) => {
   const id = parseInt(req.params.id);
   try {
@@ -278,7 +603,9 @@ app.delete('/api/admin/:id', async (req, res) => {
   }
 });
 
+
 // ====================== UTENTI ======================
+// 📥 Tutti gli utenti
 app.get("/api/utenti", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM utenti ORDER BY id ASC");
@@ -288,6 +615,7 @@ app.get("/api/utenti", async (req, res) => {
   }
 });
 
+// ➕ Aggiungi utente
 app.post("/api/utenti", async (req, res) => {
   const { reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
   try {
@@ -302,6 +630,7 @@ app.post("/api/utenti", async (req, res) => {
   }
 });
 
+// ✏️ Modifica utente
 app.put("/api/utenti/:id", async (req, res) => {
   const { id } = req.params;
   const { reparto, stanza, cognome, bagno, barba, autonomia, vestiti, alimentazione, accessori, altro } = req.body;
@@ -318,6 +647,8 @@ app.put("/api/utenti/:id", async (req, res) => {
   }
 });
 
+
+// ❌ Elimina utente
 app.delete("/api/utenti/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -329,7 +660,9 @@ app.delete("/api/utenti/:id", async (req, res) => {
   }
 });
 
+
 // ====================== FRUTTI ======================
+// 📥 Tutti i frutti
 app.get("/api/frutti", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM frutti ORDER BY id ASC");
@@ -339,6 +672,7 @@ app.get("/api/frutti", async (req, res) => {
   }
 });
 
+// ➕ Aggiungi frutto
 app.post("/api/frutti", async (req, res) => {
   const { nome, descrizione, categoria } = req.body;
   try {
@@ -352,6 +686,7 @@ app.post("/api/frutti", async (req, res) => {
   }
 });
 
+// ✏️ Modifica frutto
 app.put("/api/frutti/:id", async (req, res) => {
   const { id } = req.params;
   const { nome, descrizione, categoria } = req.body;
@@ -367,6 +702,7 @@ app.put("/api/frutti/:id", async (req, res) => {
   }
 });
 
+// ❌ Elimina frutto
 app.delete("/api/frutti/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -379,6 +715,7 @@ app.delete("/api/frutti/:id", async (req, res) => {
 });
 
 // ====================== APPUNTI ======================
+// 📥 Tutti i appunti
 app.get("/api/appunti", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM appunti ORDER BY id ASC");
@@ -388,6 +725,7 @@ app.get("/api/appunti", async (req, res) => {
   }
 });
 
+// ➕ Aggiungi frutto
 app.post("/api/appunti", async (req, res) => {
   const { nome, descrizione, categoria } = req.body;
   try {
@@ -401,6 +739,7 @@ app.post("/api/appunti", async (req, res) => {
   }
 });
 
+// ✏️ Modifica frutto
 app.put("/api/appunti/:id", async (req, res) => {
   const { id } = req.params;
   const { nome, descrizione, categoria } = req.body;
@@ -409,25 +748,29 @@ app.put("/api/appunti/:id", async (req, res) => {
       "UPDATE appunti SET nome=$1, descrizione=$2, categoria=$3 WHERE id=$4 RETURNING *",
       [nome, descrizione, categoria, id]
     );
-    if (result.rowCount === 0) return res.status(404).json({ error: "Appunto non trovato" });
+    if (result.rowCount === 0) return res.status(404).json({ error: "Frutto non trovato" });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: "Errore aggiornamento appunti" });
   }
 });
 
+// ❌ Elimina frutto
 app.delete("/api/appunti/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const result = await db.query("DELETE FROM appunti WHERE id=$1", [id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: "Appunto non trovato" });
+    if (result.rowCount === 0) return res.status(404).json({ error: "Frutto non trovato" });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Errore cancellazione appunti" });
   }
 });
 
-// Запуск сервера
-app.listen(PORT, () => {
-  console.log(`✅ Server avviato su http://localhost:${PORT}`);
+
+
+// ====================== SERVER ======================
+const PORT = process.env.PORT || 3004;
+app.listen(PORT, async () => {
+  console.log(`✅ Server avviato su porta ${PORT}`);
 });
