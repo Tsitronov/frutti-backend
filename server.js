@@ -156,7 +156,7 @@ app.delete("/api/delete-photo/:id", async (req, res) => {
 });
 
 // Маршрут для загрузки и парсинга Excel + сохранение в БД
-app.post('/upload', upload.single('excelFile'), (req, res) => {
+app.post('/upload', excelUpload.single('excelFile'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Файл не выбран' });
   }
