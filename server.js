@@ -95,7 +95,7 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-app.post('/api/upload-photos', requireAdmin, uploadPhotos.array('photos', 5), (req, res) => {
+app.post('/api/upload-photos', requireAdmin, photoUpload.array('photos', 5), (req, res) => {
   console.log('POST /api/upload-photos вызван, files:', req.files?.length || 0); // 👉 Добавил лог files
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'Нет файлов для загрузки' }); // 👉 Добавил check
