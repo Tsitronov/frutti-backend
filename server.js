@@ -4,11 +4,14 @@ import bcrypt from "bcrypt";
 import { Pool } from "pg";
 import multer from "multer";
 import XLSX from "xlsx";
-import fs from "fs";
+import fs from "fs/promises";
 import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,8 +37,21 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something broke!' });
 });
 
-// 👉 КРИТИЧНО: Для отдачи фото (иначе 404 на файлы!)
-app.use('/uploads', express.static('uploads'));
+
+// Папка для фото
+const uploadDir = path.join(__dirname, "uploads");
+app.use("/uploads", express.static(uploadDir));
+
+// Multer
+const photoStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
+});
+const photoUpload = multer({ storage: photoStorage });
+const excelUpload = multer({ storage: multer.memoryStorage() });
+
+
+
 
 // 🔌 PG Pool (SSL fix)
 const db = new Pool({
@@ -91,95 +107,67 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-// 👉 Multer для фото (diskStorage)
-const uploadPhotos = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const uploadDir = 'uploads/';
-      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-      cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      const filename = uniqueSuffix + path.extname(file.originalname);
-      cb(null, filename);
+// 🚀 Загрузка фото
+app.post("/api/upload-photos", photoUpload.array("photos", 5), async (req, res) => {
+  try {
+    const files = req.files.map(f => f.filename);
+    const saved = [];
+
+    for (let file of files) {
+      const result = await db.query(
+        "INSERT INTO photos (path) VALUES ($1) RETURNING id, path",
+        [file]
+      );
+      saved.push(result.rows[0]);
     }
-  }),
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') cb(null, true);
-    else cb(new Error('Только JPEG или PNG!'), false);
-  },
-  limits: { fileSize: 5 * 1024 * 1024 }
-});
 
-// 👉 Маршруты для фото (глобально, только админы)
-app.get('/api/photos', requireAdmin, (req, res) => {
-  console.log('GET /api/photos вызван с header:', req.headers['user-categoria']); // 👉 Дебаг
-  db.query('SELECT id, path FROM photos ORDER BY createdAt DESC', (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ photos: results.rows });
-  });
-});
-
-app.post(
-  '/api/upload-photos',
-  requireAdmin,
-  uploadPhotos.array('photos', 5),
-  (req, res) => {
-    console.log('POST /api/upload-photos вызван');
-
-    db.query('SELECT COUNT(*) FROM photos', (err, results) => {
-      if (err) return res.status(500).json({ error: err.message });
-
-      const currentCount = parseInt(results.rows[0].count);
-      if (currentCount + req.files.length > 5) {
-        return res
-          .status(400)
-          .json({ error: 'Максимум 5 фото в системе' });
-      }
-
-      const photoPaths = req.files.map(file => file.path);
-
-      // multiple insert в pg: VALUES ($1), ($2), ...
-      const values = photoPaths
-        .map((_, index) => `($${index + 1})`)
-        .join(', ');
-      const query = `INSERT INTO photos (path) VALUES ${values} RETURNING *`;
-
-      db.query(query, photoPaths, (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-
-        console.log(
-          'Фото загружены:',
-          photoPaths.map(p => `fs.existsSync(${p}) = ${fs.existsSync(p)}`)
-        );
-
-        res.json({
-          success: true,
-          photos: result.rows // 👉 лучше вернуть из БД (id + path), а не только пути
-        });
-      });
-    });
+    res.json({ photos: saved });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка при загрузке" });
   }
-);
-
-app.delete('/api/delete-photo/:photoId', requireAdmin, (req, res) => {
-  console.log('DELETE /api/delete-photo вызван'); // 👉 Дебаг
-  const { photoId } = req.params;
-  db.query('SELECT path FROM photos WHERE id = $1', [photoId], (err, results) => {
-    if (err || results.rows.length === 0) return res.status(404).json({ error: 'Фото не найдено' });
-    
-    const filePath = results.rows[0].path;
-    fs.unlink(filePath, (err) => {
-      if (err) console.error('Ошибка удаления файла:', err);
-    });
-    
-    db.query('DELETE FROM photos WHERE id = $1', [photoId], (err) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true });
-    });
-  });
 });
+
+// 📥 Получение всех фото
+app.get("/api/photos", async (req, res) => {
+  try {
+    const result = await db.query("SELECT id, path FROM photos ORDER BY id ASC");
+    res.json({ photos: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка при получении фото" });
+  }
+});
+
+// ❌ Удаление фото
+app.delete("/api/delete-photo/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query("SELECT path FROM photos WHERE id = $1", [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Фото не найдено" });
+    }
+
+    const fileName = result.rows[0].path;
+    const filePath = path.join(uploadDir, fileName);
+
+    await db.query("DELETE FROM photos WHERE id = $1", [id]);
+
+    try {
+      await fs.unlink(filePath);
+    } catch (err) {
+      console.warn("⚠ Не удалось удалить файл:", filePath);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка при удалении" });
+  }
+});
+
+
 
 // Маршрут для загрузки и парсинга Excel + сохранение в БД
 app.post('/upload', upload.single('excelFile'), (req, res) => {
