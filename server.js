@@ -8,7 +8,6 @@ import fs from "fs/promises"; // Используем промисы для awai
 import { fileURLToPath } from 'url';
 import path from "path";
 import dotenv from "dotenv";
-import { fileURLToPath } from "url";
 
 dotenv.config();
 
