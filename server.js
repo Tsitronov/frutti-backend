@@ -32,33 +32,20 @@ app.use(cors({
 
 app.options('*', cors());
 
-// Error handler
-app.use((req, res, next) => {
-  if (req.path.startsWith('/uploads')) {
-    res.header('Access-Control-Allow-Origin', '*'); // Для img src
-    res.header('Access-Control-Allow-Methods', 'GET');
-  }
-  next();
-});
 
-
-// Папка для фото
-
-const uploadDir = path.join(__dirname, "uploads");
-if (!fsSync.existsSync(uploadDir)) {
-  fsSync.mkdirSync(uploadDir, { recursive: true });
-}
-
+// 📂 Cartella per i photo
+const uploadDir = path.resolve("uploads");
 app.use("/uploads", express.static(uploadDir));
 
-// Multer
-const photoStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
-});
 
-// Multer в память (без сохранения на диск)
-const upload = multer({ storage: multer.memoryStorage() });
+// 📸 Multer setup
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+});
+const upload = multer({ storage });
+
+
 
 const excelUpload = multer({ storage: multer.memoryStorage() });
 
@@ -91,11 +78,11 @@ db.connect((err, client, release) => {
   const createPhotosTable = `
     DROP TABLE IF EXISTS photos;
 
-    CREATE TABLE photos (
+    CREATE TABLE IF NOT EXISTS photos (
       id SERIAL PRIMARY KEY,
       filename VARCHAR(255) NOT NULL,
-      mimetype VARCHAR(100) NOT NULL,
-      data BYTEA NOT NULL,
+      path VARCHAR(255) NOT NULL,
+      categoria VARCHAR(100),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;
@@ -116,66 +103,68 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+// 📤 Upload foto
 app.post("/api/upload-photos", upload.array("photos", 5), async (req, res) => {
   try {
-    const saved = [];
+    const categoria = req.headers["user-categoria"] || "default";
+    const uploadedPhotos = [];
 
-    for (let file of req.files) {
+    for (const file of req.files) {
       const result = await db.query(
-        "INSERT INTO photos (filename, mimetype, data) VALUES ($1, $2, $3) RETURNING id, filename, mimetype",
-        [file.originalname, file.mimetype, file.buffer]
+        "INSERT INTO photos (filename, path, categoria) VALUES ($1, $2, $3) RETURNING *",
+        [file.originalname, file.path, categoria]
       );
-      saved.push(result.rows[0]);
+      uploadedPhotos.push(result.rows[0]);
     }
 
-    res.json({ photos: saved });
+    res.json({ photos: uploadedPhotos });
   } catch (err) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: "Ошибка при загрузке фото" });
+    res.status(500).json({ error: "Errore nel salvataggio foto" });
   }
 });
 
-// 📥 Получить список фото (только id + filename)
+// 📥 Elenco фото
 app.get("/api/photos", async (req, res) => {
   try {
-    const result = await db.query("SELECT id, filename, mimetype FROM photos ORDER BY id ASC");
+    const categoria = req.headers["user-categoria"] || "default";
+    const result = await db.query(
+      "SELECT * FROM photos WHERE categoria = $1 ORDER BY id DESC",
+      [categoria]
+    );
     res.json({ photos: result.rows });
   } catch (err) {
-    console.error("Fetch photos error:", err);
-    res.status(500).json({ error: "Ошибка при получении фото" });
+    console.error("Fetch error:", err);
+    res.status(500).json({ error: "Errore nel caricamento foto" });
   }
 });
-
-// 📤 Получить файл по id
-app.get("/api/photos/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await db.query("SELECT filename, mimetype, data FROM photos WHERE id = $1", [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Фото не найдено" });
-    }
-
-    const photo = result.rows[0];
-    res.setHeader("Content-Type", photo.mimetype);
-    res.send(photo.data);
-  } catch (err) {
-    console.error("Photo fetch error:", err);
-    res.status(500).json({ error: "Ошибка при выдаче фото" });
-  }
-});
-
-
 
 // ❌ Удаление фото
 app.delete("/api/delete-photo/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id;
+    const result = await db.query("SELECT path FROM photos WHERE id = $1", [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Foto non trovata" });
+    }
+
+    const photoPath = result.rows[0].path;
+
+    // Асинхронное удаление файла
+    try {
+      await fs.unlink(photoPath);
+    } catch (err) {
+      if (err.code !== "ENOENT") { // игнорируем, если файла нет
+        console.error("Errore eliminazione file:", err);
+        return res.status(500).json({ error: "Errore nella cancellazione file" });
+      }
+    }
+
     await db.query("DELETE FROM photos WHERE id = $1", [id]);
     res.json({ success: true });
   } catch (err) {
-    console.error("Delete photo error:", err);
-    res.status(500).json({ error: "Ошибка при удалении фото" });
+    console.error("Delete error:", err);
+    res.status(500).json({ error: "Errore nella cancellazione foto" });
   }
 });
 
