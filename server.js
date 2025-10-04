@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import bcrypt from "bcrypt";
 import { Pool } from "pg";
-import multer from "multer";
+
 import XLSX from "xlsx";
 import fs from "fs/promises"; // Используем промисы для await
 import fsSync from "fs";
@@ -11,6 +11,7 @@ import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
+const multer = require('multer');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,8 +38,6 @@ app.options('*', cors());
 const uploadDir = path.resolve("uploads");
 app.use("/uploads", express.static(uploadDir));
 
-
-const multer = require('multer');
 
 // 📸 Multer setup
 const storage = multer.diskStorage({
@@ -114,7 +113,7 @@ app.post('/api/upload-photos', upload.array('photos', 5), (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Errore caricamento foto' });
   }
-  
+
   try {
     const categoria = req.headers["user-categoria"] || "default";
     const uploadedPhotos = [];
