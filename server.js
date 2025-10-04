@@ -105,16 +105,9 @@ const requireAdmin = (req, res, next) => {
 };
 
 // 📤 Upload foto
-app.post('/api/upload-photos', upload.array('photos', 5), (req, res) => {
+app.post('/api/upload-photos', upload.array('photos', 5), async (req, res) => {
   try {
     console.log(req.files); // dovresti vedere i file caricati
-    res.json({ photos: req.files });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Errore caricamento foto' });
-  }
-
-  try {
     const categoria = req.headers["user-categoria"] || "default";
     const uploadedPhotos = [];
 
