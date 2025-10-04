@@ -38,12 +38,14 @@ const uploadDir = path.resolve("uploads");
 app.use("/uploads", express.static(uploadDir));
 
 
+const multer = require('multer');
+
 // 📸 Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
-const upload = multer({ storage });
+const upload = multer({ dest: 'uploads/' });
 
 
 
@@ -104,7 +106,15 @@ const requireAdmin = (req, res, next) => {
 };
 
 // 📤 Upload foto
-app.post("/api/upload-photos", upload.array("photos", 5), async (req, res) => {
+app.post('/api/upload-photos', upload.array('photos', 5), (req, res) => {
+  try {
+    console.log(req.files); // dovresti vedere i file caricati
+    res.json({ photos: req.files });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Errore caricamento foto' });
+  }
+  
   try {
     const categoria = req.headers["user-categoria"] || "default";
     const uploadedPhotos = [];
