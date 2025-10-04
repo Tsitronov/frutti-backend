@@ -20,8 +20,8 @@ const app = express();
 
 app.use(express.json());
 
-// CORS
-app.use(cors({
+
+const corsOptions = {
   origin: [
     'http://localhost:3000',      // Dev
     'https://frutti.vercel.app'   // Prod
@@ -29,9 +29,11 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'user-categoria']
-}));
-
-app.options('*', cors());
+};
+// Применяем ко всем маршрутам
+app.use(cors(corsOptions));
+// Для preflight (OPTIONS) запросов тоже используем те же настройки
+app.options('*', cors(corsOptions));
 
 
 // 📂 Cartella per i photo
@@ -126,20 +128,50 @@ app.post('/api/upload-photos', upload.array('photos', 5), async (req, res) => {
   }
 });
 
-// 📥 Elenco фото
+// 📸 Отдача конкретного фото по ID (для fetchPhotoById)
+app.get('/api/photos/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query("SELECT * FROM photos WHERE id = $1", [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Фото не найдено" });
+    }
+
+    const photoPath = result.rows[0].path;
+    res.sendFile(path.resolve(photoPath));
+  } catch (err) {
+    console.error("Fetch photo by ID error:", err);
+    res.status(500).json({ error: "Ошибка при получении фото" });
+  }
+});
+
+
+// 📥 Получение всех фото по категории (корректно)
 app.get("/api/photos", async (req, res) => {
   try {
     const categoria = req.headers["user-categoria"] || "default";
+
     const result = await db.query(
       "SELECT * FROM photos WHERE categoria = $1 ORDER BY id DESC",
       [categoria]
     );
-    res.json({ photos: result.rows });
+
+    // Преобразуем путь к файлу в доступный URL для фронта
+    const photosWithUrl = result.rows.map(photo => ({
+      id: photo.id,
+      filename: photo.filename,
+      url: `/uploads/${path.basename(photo.path)}`, // <-- здесь путь для фронта
+      categoria: photo.categoria
+    }));
+
+    res.json({ photos: photosWithUrl });
   } catch (err) {
-    console.error("Fetch error:", err);
-    res.status(500).json({ error: "Errore nel caricamento foto" });
+    console.error("Fetch photos error:", err);
+    res.status(500).json({ error: "Ошибка при получении фото" });
   }
 });
+
 
 // ❌ Удаление фото
 app.delete("/api/delete-photo/:id", async (req, res) => {
