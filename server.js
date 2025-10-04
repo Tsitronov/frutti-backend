@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import bcrypt from "bcrypt";
 import { Pool } from "pg";
-
+import multer from 'multer';
 import XLSX from "xlsx";
 import fs from "fs/promises"; // Используем промисы для await
 import fsSync from "fs";
@@ -11,7 +11,7 @@ import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
-const multer = require('multer');
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
